@@ -230,7 +230,7 @@
             scannerContainer.classList.remove('hidden');
             scannerLine.style.display = 'block'; // Afficher la ligne de scan
             eanInput.disabled = true;
-            eanInput.value = 'Scanner en cours...'; // Indiquer à l'utilisateur que le scan est actif
+            eanInput.value = 'Recherche de code-barres...'; // Message plus explicite
             isScanning = true; // Mettre à jour l'état du scanner
 
             try {
@@ -243,7 +243,22 @@
                     codeReader.reset(); // Réinitialise le décodeur pour éviter les conflits
                     codeReader = null; // Libérer l'ancienne instance
                 }
-                codeReader = new ZXing.BrowserMultiFormatReader(); // Créer une nouvelle instance
+                
+                // Configurer les hints pour ZXing
+                const hints = new Map();
+                const allowedFormats = [
+                    ZXing.BarcodeFormat.EAN_13,
+                    ZXing.BarcodeFormat.EAN_8,
+                    ZXing.BarcodeFormat.UPC_A,
+                    ZXing.BarcodeFormat.UPC_E,
+                    ZXing.BarcodeFormat.CODE_128, // Ajouter d'autres formats courants si nécessaire
+                    ZXing.BarcodeFormat.QR_CODE // Si vous scannez aussi des QR codes
+                ];
+                hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, allowedFormats);
+                // hints.set(ZXing.DecodeHintType.TRY_HARDER, true); // Peut augmenter la consommation CPU
+
+                // Initialiser le lecteur avec les hints et un intervalle de décodage plus court
+                codeReader = new ZXing.BrowserMultiFormatReader(hints, 200); // 200ms entre les tentatives de décodage
 
                 const videoInputDevices = await codeReader.getVideoInputDevices();
 
@@ -336,7 +351,7 @@
             scannerLine.style.display = 'none'; // Cacher la ligne de scan
             eanInput.disabled = false;
             // Réinitialiser le placeholder si le champ est vide après l'arrêt du scanner
-            if (eanInput.value === 'Scanner en cours...') {
+            if (eanInput.value === 'Recherche de code-barres...') { // Mise à jour du message
                 eanInput.value = '';
             }
             isScanning = false; // Mettre à jour l'état
