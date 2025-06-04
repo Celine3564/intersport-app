@@ -23,6 +23,30 @@
         .section-border {
             @apply border-t border-gray-300 pt-4 mt-4;
         }
+
+        /* Styles pour la ligne de scan animée */
+        .scanner-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background-color: #34D399; /* Vert fluo de Tailwind (emerald-400) */
+            box-shadow: 0 0 8px rgba(52, 211, 153, 0.8);
+            animation: scan-animation 2s infinite alternate; /* Animation de balayage */
+            z-index: 10; /* Assure que la ligne est au-dessus de la vidéo */
+        }
+
+        @keyframes scan-animation {
+            from { top: 0%; }
+            to { top: 100%; }
+        }
+
+        /* Conteneur du scanner pour positionner la ligne */
+        #scanner-container {
+            position: relative; /* Nécessaire pour positionner la ligne de scan */
+            overflow: hidden; /* Cache la ligne de scan quand elle sort du conteneur */
+        }
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
@@ -65,6 +89,7 @@
         <!-- Zone du scanner vidéo -->
         <div id="scanner-container" class="hidden mb-4 p-2 bg-gray-100 rounded-lg border border-gray-300">
             <video id="scanner-video" class="w-full h-64 bg-gray-200 rounded-lg"></video>
+            <div id="scanner-line" class="scanner-line"></div> <!-- Ligne de scan ajoutée ici -->
             <button id="stopScannerButton" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-2 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 transition duration-300 shadow-md transform hover:scale-105">
                 Arrêter le Scanner
             </button>
@@ -146,6 +171,7 @@
         const scannerContainer = document.getElementById('scanner-container');
         const scannerVideo = document.getElementById('scanner-video');
         const stopScannerButton = document.getElementById('stopScannerButton');
+        const scannerLine = document.getElementById('scanner-line'); // Référence à la ligne de scan
         let codeReader = null; // Initialiser à null
         let currentStream = null; // Initialiser à null
         let isScanning = false; // Nouvelle variable pour suivre l'état du scanner
@@ -202,6 +228,7 @@
 
             hideMessage();
             scannerContainer.classList.remove('hidden');
+            scannerLine.style.display = 'block'; // Afficher la ligne de scan
             eanInput.disabled = true;
             eanInput.value = 'Scanner en cours...'; // Indiquer à l'utilisateur que le scan est actif
             isScanning = true; // Mettre à jour l'état du scanner
@@ -237,6 +264,7 @@
                 } else {
                     showMessage('Aucune caméra trouvée.', 'error');
                     scannerContainer.classList.add('hidden');
+                    scannerLine.style.display = 'none'; // Cacher la ligne de scan
                     eanInput.disabled = false;
                     eanInput.value = ''; // Effacer le message "Scanner en cours..."
                     isScanning = false; // Mettre à jour l'état
@@ -266,19 +294,18 @@
                         eanInput.value = result.getText();
                         showMessage(`Code EAN scanné : ${result.getText()}`, 'success');
                         stopScanner(); // Arrêter le scanner après un scan réussi
-                        // NOUVELLE MODIFICATION ICI : Déclencher le clic sur le bouton Valider saisie
-                        validateButton.click(); 
+                        validateButton.click(); // Déclencher le clic sur le bouton Valider saisie
                     }
                     if (err && !(err instanceof ZXing.NotFoundException)) {
                         console.error(err);
                         // Ne pas afficher d'erreur pour NotFoundException, c'est normal tant qu'aucun code n'est détecté
-                        // showMessage('Erreur de lecture du code-barres.', 'error');
                     }
                 });
             } catch (err) {
                 console.error(err);
                 showMessage('Impossible d\'accéder à la caméra. Assurez-vous d\'avoir autorisé l\'accès et qu\'aucune autre application ne l\'utilise.', 'error');
                 scannerContainer.classList.add('hidden');
+                scannerLine.style.display = 'none'; // Cacher la ligne de scan
                 eanInput.disabled = false;
                 eanInput.value = ''; // Effacer le message "Scanner en cours..."
                 isScanning = false; // Mettre à jour l'état
@@ -306,6 +333,7 @@
             scannerVideo.currentTime = 0; // Réinitialiser le temps de la vidéo
 
             scannerContainer.classList.add('hidden');
+            scannerLine.style.display = 'none'; // Cacher la ligne de scan
             eanInput.disabled = false;
             // Réinitialiser le placeholder si le champ est vide après l'arrêt du scanner
             if (eanInput.value === 'Scanner en cours...') {
