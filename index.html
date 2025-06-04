@@ -46,9 +46,7 @@
         #scanner-container {
             position: relative; /* Nécessaire pour positionner la ligne de scan */
             overflow: hidden; /* Cache la ligne de scan quand elle sort du conteneur */
-            display: flex; /* Utiliser flexbox */
-            flex-direction: column; /* Empiler les éléments verticalement */
-            align-items: center; /* Centrer les éléments horizontalement */
+            /* Removed flex properties from here, moved to #full-scanner-area */
         }
 
         #scanner-video {
@@ -68,6 +66,14 @@
             z-index: 8; /* Entre la vidéo et la ligne de scan */
             pointer-events: none; /* Permet de cliquer à travers le cadre */
             border-radius: 8px; /* Coins arrondis pour le cadre */
+        }
+
+        /* Nouveau conteneur pour le scanner complet et le bouton */
+        #full-scanner-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            /* Le hidden/shown sera appliqué à ce conteneur */
         }
     </style>
 </head>
@@ -108,11 +114,13 @@
             </div>
         </div>
 
-        <!-- Zone du scanner vidéo -->
-        <div id="scanner-container" class="hidden mb-4 p-2 bg-gray-100 rounded-lg border border-gray-300">
-            <video id="scanner-video" class="w-full h-64 bg-gray-200 rounded-lg" autoplay playsinline></video>
-            <div id="scan-frame" class="scan-frame"></div> <!-- Nouveau cadre de scan -->
-            <div id="scanner-line" class="scanner-line"></div> <!-- Ligne de scan ajoutée ici -->
+        <!-- Zone du scanner vidéo et bouton (nouveau conteneur parent) -->
+        <div id="full-scanner-area" class="hidden mb-4">
+            <div id="scanner-container" class="w-full p-2 bg-gray-100 rounded-lg border border-gray-300">
+                <video id="scanner-video" class="w-full h-64 bg-gray-200 rounded-lg" autoplay playsinline></video>
+                <div id="scan-frame" class="scan-frame"></div> <!-- Nouveau cadre de scan -->
+                <div id="scanner-line" class="scanner-line"></div> <!-- Ligne de scan ajoutée ici -->
+            </div>
             <button id="stopScannerButton" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-2 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 transition duration-300 shadow-md transform hover:scale-105">
                 Arrêter le Scanner
             </button>
@@ -187,7 +195,8 @@
         const marqueValue = document.getElementById('marqueValue');
 
         // Éléments du scanner
-        const scannerContainer = document.getElementById('scanner-container');
+        const fullScannerArea = document.getElementById('full-scanner-area'); // Nouveau conteneur parent
+        const scannerContainer = document.getElementById('scanner-container'); // L'ancien conteneur, maintenant imbriqué
         const scannerVideo = document.getElementById('scanner-video');
         const stopScannerButton = document.getElementById('stopScannerButton');
         const scannerLine = document.getElementById('scanner-line'); // Référence à la ligne de scan
@@ -247,7 +256,7 @@
             }
 
             hideMessage();
-            scannerContainer.classList.remove('hidden');
+            fullScannerArea.classList.remove('hidden'); // Afficher le conteneur parent
             scannerLine.style.display = 'block'; // Afficher la ligne de scan
             scanFrame.style.display = 'block'; // Afficher le cadre de scan
             eanInput.disabled = true;
@@ -303,7 +312,7 @@
                     showMessage('Caméra arrière non trouvée, utilisation de la première caméra disponible.', 'info');
                 } else {
                     showMessage('Aucune caméra trouvée.', 'error');
-                    scannerContainer.classList.add('hidden');
+                    fullScannerArea.classList.add('hidden'); // Masquer le conteneur parent
                     scannerLine.style.display = 'none'; // Cacher la ligne de scan
                     scanFrame.style.display = 'none'; // Cacher le cadre de scan
                     eanInput.disabled = false;
@@ -359,7 +368,7 @@
                 } else {
                     showMessage(`Impossible d\'accéder à la caméra. Erreur: ${err.message}.`, 'error');
                 }
-                scannerContainer.classList.add('hidden');
+                fullScannerArea.classList.add('hidden'); // Masquer le conteneur parent
                 scannerLine.style.display = 'none'; // Cacher la ligne de scan
                 scanFrame.style.display = 'none'; // Cacher le cadre de scan
                 eanInput.disabled = false;
@@ -389,7 +398,7 @@
             scannerVideo.pause(); // Mettre la vidéo en pause
             scannerVideo.currentTime = 0; // Réinitialiser le temps de la vidéo
 
-            scannerContainer.classList.add('hidden');
+            fullScannerArea.classList.add('hidden'); // Masquer le conteneur parent
             scannerLine.style.display = 'none'; // Cacher la ligne de scan
             scanFrame.style.display = 'none'; // Cacher le cadre de scan
             eanInput.disabled = false;
