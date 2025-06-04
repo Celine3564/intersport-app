@@ -197,38 +197,61 @@
             hideMessage();
             scannerContainer.classList.remove('hidden');
             eanInput.disabled = true;
+            eanInput.value = 'Scanner en cours...'; // Indiquer à l'utilisateur que le scan est actif
 
             try {
                 codeReader = new ZXing.BrowserMultiFormatReader();
                 const videoInputDevices = await codeReader.getVideoInputDevices();
 
-                if (videoInputDevices.length > 0) {
-                    const selectedDeviceId = videoInputDevices[0].deviceId;
-                    currentStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: selectedDeviceId } });
-                    scannerVideo.srcObject = currentStream;
-                    scannerVideo.play();
+                let selectedDeviceId;
+                // Tenter de trouver la caméra arrière (facingMode: 'environment')
+                const rearCamera = videoInputDevices.find(device =>
+                    device.label.toLowerCase().includes('back') || // Vérifier le label pour "back"
+                    device.label.toLowerCase().includes('environment') || // Vérifier le label pour "environment"
+                    (device.getCapabilities && device.getCapabilities().facingMode && device.getCapabilities().facingMode.includes('environment')) // Vérifier les capacités
+                );
 
-                    codeReader.decodeFromVideoDevice(selectedDeviceId, 'scanner-video', (result, err) => {
-                        if (result) {
-                            eanInput.value = result.getText();
-                            showMessage(`Code EAN scanné : ${result.getText()}`, 'success');
-                            stopScanner();
-                        }
-                        if (err && !(err instanceof ZXing.NotFoundException)) {
-                            console.error(err);
-                            showMessage('Erreur de lecture du code-barres.', 'error');
-                        }
-                    });
+                if (rearCamera) {
+                    selectedDeviceId = rearCamera.deviceId;
+                    showMessage('Utilisation de la caméra arrière...', 'info');
+                } else if (videoInputDevices.length > 0) {
+                    selectedDeviceId = videoInputDevices[0].deviceId; // Fallback à la première caméra trouvée
+                    showMessage('Caméra arrière non trouvée, utilisation de la première caméra disponible.', 'info');
                 } else {
                     showMessage('Aucune caméra trouvée.', 'error');
                     scannerContainer.classList.add('hidden');
                     eanInput.disabled = false;
+                    eanInput.value = ''; // Effacer le message "Scanner en cours..."
+                    return; // Sortir si aucune caméra
                 }
+
+                // Demander l'accès à la caméra avec facingMode 'environment' si possible
+                currentStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        deviceId: selectedDeviceId,
+                        facingMode: rearCamera ? 'environment' : undefined // Préférer 'environment' si une caméra arrière est identifiée
+                    }
+                });
+                scannerVideo.srcObject = currentStream;
+                scannerVideo.play();
+
+                codeReader.decodeFromVideoDevice(selectedDeviceId, 'scanner-video', (result, err) => {
+                    if (result) {
+                        eanInput.value = result.getText();
+                        showMessage(`Code EAN scanné : ${result.getText()}`, 'success');
+                        stopScanner(); // Arrêter le scanner après un scan réussi
+                    }
+                    if (err && !(err instanceof ZXing.NotFoundException)) {
+                        console.error(err);
+                        showMessage('Erreur de lecture du code-barres.', 'error');
+                    }
+                });
             } catch (err) {
                 console.error(err);
-                showMessage('Impossible d\'accéder à la caméra. Assurez-vous d\'avoir autorisé l\'accès.', 'error');
+                showMessage('Impossible d\'accéder à la caméra. Assurez-vous d\'avoir autorisé l\'accès et qu\'aucune autre application ne l\'utilise.', 'error');
                 scannerContainer.classList.add('hidden');
                 eanInput.disabled = false;
+                eanInput.value = ''; // Effacer le message "Scanner en cours..."
             }
         }
 
@@ -237,23 +260,26 @@
 
         function stopScanner() {
             if (codeReader) {
-                codeReader.reset();
+                codeReader.reset(); // Arrête le décodage
             }
             if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
+                currentStream.getTracks().forEach(track => track.stop()); // Arrête le flux vidéo
             }
             scannerContainer.classList.add('hidden');
             eanInput.disabled = false;
+            // Réinitialiser le placeholder si le champ est vide après l'arrêt du scanner
+            if (eanInput.value === 'Scanner en cours...') {
+                eanInput.value = '';
+            }
             showMessage('Scanner arrêté.', 'info');
         }
 
         // --- Logique de chargement des magasins (HARDCODÉE) ---
         async function populateMagasinList() {
             const magasins = [
-                "ITS BAYONNE",
-                "ITS BIDART",
-                "ITS PMI",
-                "ITS URRUGNE",
+                "INTERSPORT URRUGNE",
+                "INTERSPORT BAYONNE",
+                "TOUS"
             ];
 
             magasinSelect.innerHTML = '<option value="">-- Sélectionner un magasin --</option>'; // Option par défaut
@@ -263,7 +289,6 @@
                     magasinSelect.innerHTML += `<option value="${magasin}">${magasin}</option>`;
                 }
             });
-            // showMessage('Liste des magasins chargée.', 'success'); // Cette ligne a été retirée
         }
 
         // Charger la liste des magasins au chargement de la page
@@ -321,7 +346,7 @@
                         soldeValue.textContent = item.Solde !== undefined ? item.Solde : 'N/A';
                         margeValue.textContent = item.Marge !== undefined ? item.Marge : 'N/A';
                         chronoValue.textContent = item.Chrono !== undefined ? item.Chrono : 'N/A';
-                        modeleValue.textContent = item.Modele !== undefined ? item.Modele : 'N/A';
+                        modeleValue.textContent = item.Modele !== undefined ? item.Modele : 'N/A'; // Correction ici
                         refValue.textContent = item.Ref !== undefined ? item.Ref : 'N/A';
                         couleurValue.textContent = item.Couleur !== undefined ? item.Couleur : 'N/A';
                         universValue.textContent = item.Univers !== undefined ? item.Univers : 'N/A';
