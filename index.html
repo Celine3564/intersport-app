@@ -119,7 +119,7 @@
     <script>
         // REMPLACEZ CETTE URL PAR L'URL DE DÉPLOIEMENT DE VOTRE SCRIPT GOOGLE APPS SCRIPT
         // (Celle qui se termine par /exec)
-        const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxRS84o7n49FeQcnyCcEsUeyJvzH1vfop4XSTvTZDAkSvkFrnelp8pNcUv9K1Qi7w8h/exec';
+        const APPS_SCRIPT_WEB_APP_URL = 'VOTRE_URL_DE_DEPLOIEMENT_APPS_SCRIPT_ICI';
 
         const validateButton = document.getElementById('validateButton');
         const chronoInput = document.getElementById('chronoInput');
@@ -146,8 +146,9 @@
         const scannerContainer = document.getElementById('scanner-container');
         const scannerVideo = document.getElementById('scanner-video');
         const stopScannerButton = document.getElementById('stopScannerButton');
-        let codeReader;
-        let currentStream;
+        let codeReader = null; // Initialiser à null
+        let currentStream = null; // Initialiser à null
+        let isScanning = false; // Nouvelle variable pour suivre l'état du scanner
 
         // Fonction pour afficher des messages (erreurs, infos)
         function showMessage(message, type = 'info') {
@@ -194,13 +195,29 @@
 
         // --- Logique du Scanner ---
         async function startScanner() {
+            if (isScanning) { // Empêcher de démarrer si déjà en cours
+                showMessage('Le scanner est déjà actif.', 'info');
+                return;
+            }
+
             hideMessage();
             scannerContainer.classList.remove('hidden');
             eanInput.disabled = true;
             eanInput.value = 'Scanner en cours...'; // Indiquer à l'utilisateur que le scan est actif
+            isScanning = true; // Mettre à jour l'état du scanner
 
             try {
-                codeReader = new ZXing.BrowserMultiFormatReader();
+                // Arrêter tout flux et réinitialiser le lecteur avant de commencer
+                if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                    currentStream = null;
+                }
+                if (codeReader) {
+                    codeReader.reset(); // Réinitialise le décodeur pour éviter les conflits
+                    codeReader = null; // Libérer l'ancienne instance
+                }
+                codeReader = new ZXing.BrowserMultiFormatReader(); // Créer une nouvelle instance
+
                 const videoInputDevices = await codeReader.getVideoInputDevices();
 
                 let selectedDeviceId;
@@ -222,6 +239,7 @@
                     scannerContainer.classList.add('hidden');
                     eanInput.disabled = false;
                     eanInput.value = ''; // Effacer le message "Scanner en cours..."
+                    isScanning = false; // Mettre à jour l'état
                     return; // Sortir si aucune caméra
                 }
 
@@ -233,7 +251,15 @@
                     }
                 });
                 scannerVideo.srcObject = currentStream;
-                scannerVideo.play();
+                // Assurez-vous que la vidéo est chargée avant de tenter de la jouer
+                scannerVideo.onloadedmetadata = () => {
+                    scannerVideo.play().catch(e => {
+                        console.error("Erreur lors du démarrage de la vidéo:", e);
+                        showMessage('Erreur lors du démarrage de la vidéo du scanner.', 'error');
+                        stopScanner();
+                    });
+                };
+
 
                 codeReader.decodeFromVideoDevice(selectedDeviceId, 'scanner-video', (result, err) => {
                     if (result) {
@@ -243,7 +269,8 @@
                     }
                     if (err && !(err instanceof ZXing.NotFoundException)) {
                         console.error(err);
-                        showMessage('Erreur de lecture du code-barres.', 'error');
+                        // Ne pas afficher d'erreur pour NotFoundException, c'est normal tant qu'aucun code n'est détecté
+                        // showMessage('Erreur de lecture du code-barres.', 'error');
                     }
                 });
             } catch (err) {
@@ -252,6 +279,7 @@
                 scannerContainer.classList.add('hidden');
                 eanInput.disabled = false;
                 eanInput.value = ''; // Effacer le message "Scanner en cours..."
+                isScanning = false; // Mettre à jour l'état
             }
         }
 
@@ -259,18 +287,29 @@
         stopScannerButton.addEventListener('click', stopScanner);
 
         function stopScanner() {
+            if (!isScanning) { // Ne rien faire si le scanner n'est pas actif
+                return;
+            }
+
             if (codeReader) {
                 codeReader.reset(); // Arrête le décodage
+                codeReader = null; // Libérer l'instance
             }
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop()); // Arrête le flux vidéo
+                currentStream = null;
             }
+            scannerVideo.srcObject = null; // Détacher le flux vidéo
+            scannerVideo.pause(); // Mettre la vidéo en pause
+            scannerVideo.currentTime = 0; // Réinitialiser le temps de la vidéo
+
             scannerContainer.classList.add('hidden');
             eanInput.disabled = false;
             // Réinitialiser le placeholder si le champ est vide après l'arrêt du scanner
             if (eanInput.value === 'Scanner en cours...') {
                 eanInput.value = '';
             }
+            isScanning = false; // Mettre à jour l'état
             showMessage('Scanner arrêté.', 'info');
         }
 
@@ -346,7 +385,7 @@
                         soldeValue.textContent = item.Solde !== undefined ? item.Solde : 'N/A';
                         margeValue.textContent = item.Marge !== undefined ? item.Marge : 'N/A';
                         chronoValue.textContent = item.Chrono !== undefined ? item.Chrono : 'N/A';
-                        modeleValue.textContent = item.Modele !== undefined ? item.Modele : 'N/A'; // Correction ici
+                        modeleValue.textContent = item.Modele !== undefined ? item.Modele : 'N/A';
                         refValue.textContent = item.Ref !== undefined ? item.Ref : 'N/A';
                         couleurValue.textContent = item.Couleur !== undefined ? item.Couleur : 'N/A';
                         universValue.textContent = item.Univers !== undefined ? item.Univers : 'N/A';
