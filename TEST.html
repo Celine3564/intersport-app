@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recherche Produit - INTERSPORT</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* bg-gray-100 */
+        }
+        /* Style pour les labels des résultats */
+        .result-label {
+            @apply font-semibold text-gray-700 text-sm;
+        }
+        /* Style pour les valeurs des résultats */
+        .result-value {
+            @apply text-gray-800 text-sm;
+        }
+        /* Styles pour les bordures des sections */
+        .section-border {
+            @apply border-t border-gray-300 pt-4 mt-4;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg border border-gray-200">
+        <!-- En-tête INTERSPORT -->
+        <div class="text-center mb-6">
+            <img src="https://placehold.co/150x50/000/fff?text=INTERSPORT" alt="Logo INTERSPORT" class="mx-auto mb-2 rounded">
+            <p class="text-blue-700 font-semibold text-lg">Le sport, la plus belle des rencontres</p>
+        </div>
+
+        <!-- Section Choisir un magasin -->
+        <div class="mb-6">
+            <label for="magasinInput" class="block text-gray-700 text-sm font-semibold mb-2">Choisir un magasin :</label>
+            <input type="text" id="magasinInput" placeholder="Ex: INTERSPORT URRUGNE ou TOUS"
+                   class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200">
+            <!-- Le bouton "Charger les données" et "Nb Lignes DataBase" ne sont pas fonctionnels ici sans un script Apps Script dédié -->
+            <button id="chargerDonneesButton" class="w-full bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg mt-4 cursor-not-allowed opacity-50" disabled>
+                Charger les données (Non fonctionnel)
+            </button>
+            <p id="nbLignesDatabase" class="text-center text-gray-500 text-sm mt-2">Nb Lignes DataBase: N/A</p>
+        </div>
+
+        <div class="section-border"></div>
+
+        <!-- Section Saisie et Scan -->
+        <div class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+            <div>
+                <label for="chronoInput" class="block text-gray-700 text-sm font-semibold mb-2">Saisir code chrono :</label>
+                <input type="text" id="chronoInput" placeholder="Ex: 961-6888"
+                       class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200">
+            </div>
+            <div>
+                <label for="eanInput" class="block text-gray-700 text-sm font-semibold mb-2">EAN (scan ou manuel) :</label>
+                <div class="flex space-x-2">
+                    <input type="text" id="eanInput" placeholder="Ex: 2001001220440"
+                           class="shadow-sm appearance-none border rounded-lg w-full py-3 px-4 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200">
+                    <button id="scannerEANButton"
+                            class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition duration-300 shadow-md transform hover:scale-105">
+                        Scanner EAN
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Zone du scanner vidéo -->
+        <div id="scanner-container" class="hidden mb-4 p-2 bg-gray-100 rounded-lg border border-gray-300">
+            <video id="scanner-video" class="w-full h-64 bg-gray-200 rounded-lg"></video>
+            <button id="stopScannerButton" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-2 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 transition duration-300 shadow-md transform hover:scale-105">
+                Arrêter le Scanner
+            </button>
+        </div>
+
+        <!-- Bouton Valider Saisie -->
+        <button id="validateButton"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-300 shadow-md transform hover:scale-105 mb-6">
+            Valider saisie
+        </button>
+
+        <div class="section-border"></div>
+
+        <!-- Indicateur de chargement -->
+        <div id="loadingIndicator" class="hidden text-center mt-4 text-blue-600 font-medium">
+            Chargement en cours...
+        </div>
+
+        <!-- Zone de message d'erreur/information -->
+        <div id="messageBox" class="mt-4 p-3 hidden rounded-lg text-sm font-medium" role="alert"></div>
+
+        <!-- Zone de résultats détaillés -->
+        <div id="resultsDisplay" class="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">Détails du Produit</h2>
+            <div id="productDetails" class="space-y-2">
+                <p><span class="result-label">Solde :</span> <span id="soldeValue" class="result-value"></span></p>
+                <p><span class="result-label">Marge :</span> <span id="margeValue" class="result-value"></span></p>
+                <p><span class="result-label">Chrono :</span> <span id="chronoValue" class="result-value"></span></p>
+                <p><span class="result-label">Modèle :</span> <span id="modeleValue" class="result-value"></span></p>
+                <p><span class="result-label">Ref :</span> <span id="refValue" class="result-value"></span></p>
+                <p><span class="result-label">Couleur :</span> <span id="couleurValue" class="result-value"></span></p>
+                <p><span class="result-label">Univers :</span> <span id="universValue" class="result-value"></span></p>
+                <p><span class="result-label">Segment :</span> <span id="segmentValue" class="result-value"></span></p>
+                <p><span class="result-label">Famille :</span> <span id="familleValue" class="result-value"></span></p>
+                <p><span class="result-label">Marque :</span> <span id="marqueValue" class="result-value"></span></p>
+            </div>
+            <p id="noResultsMessage" class="text-gray-500 mt-4 hidden">Aucun résultat trouvé pour cette recherche.</p>
+        </div>
+
+    </div>
+
+    <!-- ZXing-JS CDN pour le scanner de code-barres -->
+    <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+    <script>
+        // REMPLACEZ CETTE URL PAR L'URL DE DÉPLOIEMENT DE VOTRE SCRIPT GOOGLE APPS SCRIPT
+        // (Celle qui se termine par /exec)
+        const APPS_SCRIPT_WEB_APP_URL = 'VOTRE_URL_DE_DEPLOIEMENT_APPS_SCRIPT_ICI';
+
+        const validateButton = document.getElementById('validateButton');
+        const chronoInput = document.getElementById('chronoInput');
+        const eanInput = document.getElementById('eanInput');
+        const magasinInput = document.getElementById('magasinInput');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const messageBox = document.getElementById('messageBox');
+
+        // Éléments d'affichage des résultats
+        const productDetailsDiv = document.getElementById('productDetails');
+        const noResultsMessage = document.getElementById('noResultsMessage');
+        const soldeValue = document.getElementById('soldeValue');
+        const margeValue = document.getElementById('margeValue');
+        const chronoValue = document.getElementById('chronoValue');
+        const modeleValue = document.getElementById('modeleValue');
+        const refValue = document.getElementById('refValue');
+        const couleurValue = document.getElementById('couleurValue');
+        const universValue = document.getElementById('universValue');
+        const segmentValue = document.getElementById('segmentValue');
+        const familleValue = document.getElementById('familleValue');
+        const marqueValue = document.getElementById('marqueValue');
+
+        // Éléments du scanner
+        const scannerEANButton = document.getElementById('scannerEANButton');
+        const scannerContainer = document.getElementById('scanner-container');
+        const scannerVideo = document.getElementById('scanner-video');
+        const stopScannerButton = document.getElementById('stopScannerButton');
+        let codeReader; // Variable pour l'instance de ZXing CodeReader
+        let currentStream; // Variable pour le flux vidéo de la caméra
+
+        // Fonction pour afficher des messages (erreurs, infos)
+        function showMessage(message, type = 'info') {
+            messageBox.textContent = message;
+            messageBox.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-blue-100', 'text-blue-700');
+            if (type === 'error') {
+                messageBox.classList.add('bg-red-100', 'text-red-700');
+            } else if (type === 'success') {
+                messageBox.classList.add('bg-green-100', 'text-green-700');
+            } else { // info
+                messageBox.classList.add('bg-blue-100', 'text-blue-700');
+            }
+            messageBox.classList.remove('hidden');
+        }
+
+        // Fonction pour cacher les messages
+        function hideMessage() {
+            messageBox.classList.add('hidden');
+            messageBox.textContent = '';
+        }
+
+        // Fonction pour réinitialiser les champs d'affichage des résultats
+        function resetProductDetails() {
+            soldeValue.textContent = '';
+            margeValue.textContent = '';
+            chronoValue.textContent = '';
+            modeleValue.textContent = '';
+            refValue.textContent = '';
+            couleurValue.textContent = '';
+            universValue.textContent = '';
+            segmentValue.textContent = '';
+            familleValue.textContent = '';
+            marqueValue.textContent = '';
+            productDetailsDiv.classList.remove('hidden');
+            noResultsMessage.classList.add('hidden');
+        }
+
+        // Fonction pour afficher "Aucun résultat"
+        function showNoResults() {
+            resetProductDetails(); // Réinitialise d'abord pour vider les anciens résultats
+            productDetailsDiv.classList.add('hidden');
+            noResultsMessage.classList.remove('hidden');
+        }
+
+        // --- Logique du Scanner ---
+        scannerEANButton.addEventListener('click', async () => {
+            hideMessage();
+            scannerContainer.classList.remove('hidden');
+            scannerEANButton.disabled = true; // Désactiver le bouton scanner
+
+            try {
+                codeReader = new ZXing.BrowserMultiFormatReader();
+                const videoInputDevices = await codeReader.getVideoInputDevices();
+
+                if (videoInputDevices.length > 0) {
+                    const selectedDeviceId = videoInputDevices[0].deviceId; // Utiliser la première caméra trouvée
+                    currentStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: selectedDeviceId } });
+                    scannerVideo.srcObject = currentStream;
+                    scannerVideo.play();
+
+                    codeReader.decodeFromVideoDevice(selectedDeviceId, 'scanner-video', (result, err) => {
+                        if (result) {
+                            eanInput.value = result.getText();
+                            showMessage(`Code EAN scanné : ${result.getText()}`, 'success');
+                            stopScanner(); // Arrêter le scanner après un scan réussi
+                        }
+                        if (err && !(err instanceof ZXing.NotFoundException)) {
+                            console.error(err);
+                            showMessage('Erreur de lecture du code-barres.', 'error');
+                        }
+                    });
+                } else {
+                    showMessage('Aucune caméra trouvée.', 'error');
+                    scannerContainer.classList.add('hidden');
+                    scannerEANButton.disabled = false;
+                }
+            } catch (err) {
+                console.error(err);
+                showMessage('Impossible d\'accéder à la caméra. Assurez-vous d\'avoir autorisé l\'accès.', 'error');
+                scannerContainer.classList.add('hidden');
+                scannerEANButton.disabled = false;
+            }
+        });
+
+        stopScannerButton.addEventListener('click', stopScanner);
+
+        function stopScanner() {
+            if (codeReader) {
+                codeReader.reset(); // Arrête le décodage
+            }
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop()); // Arrête le flux vidéo
+            }
+            scannerContainer.classList.add('hidden');
+            scannerEANButton.disabled = false; // Réactiver le bouton scanner
+            showMessage('Scanner arrêté.', 'info');
+        }
+
+        // --- Logique de Validation ---
+        validateButton.addEventListener('click', async () => {
+            hideMessage(); // Cache tout message précédent
+            resetProductDetails(); // Réinitialise les champs d'affichage
+
+            const chronoCode = chronoInput.value.trim();
+            const ean = eanInput.value.trim();
+            const magasin = magasinInput.value.trim();
+
+            // Validation de l'entrée selon la logique du script Apps Script
+            if (!ean && !chronoCode && (!magasin || magasin.toUpperCase() !== 'TOUS')) {
+                showMessage("Veuillez fournir un EAN, un code Chrono, ou un Magasin égal à 'TOUS'.", 'error');
+                showNoResults(); // Afficher le message "Aucun résultat" si la validation échoue
+                return;
+            }
+
+            // Construire l'URL avec les paramètres
+            let url = APPS_SCRIPT_WEB_APP_URL;
+            const params = new URLSearchParams();
+
+            if (ean) {
+                params.append('ean', ean);
+                // Magasin est optionnel avec EAN, et n'est pas ajouté si "TOUS"
+                if (magasin && magasin.toUpperCase() !== 'TOUS') {
+                    params.append('magasin', magasin);
+                }
+            } else if (chronoCode) {
+                params.append('chronoCode', chronoCode);
+                // Magasin est optionnel avec Chrono, et n'est pas ajouté si "TOUS"
+                if (magasin && magasin.toUpperCase() !== 'TOUS') {
+                    params.append('magasin', magasin);
+                }
+            } else if (magasin.toUpperCase() === 'TOUS') {
+                params.append('magasin', magasin);
+            }
+
+            url += '?' + params.toString();
+
+            loadingIndicator.classList.remove('hidden'); // Afficher l'indicateur de chargement
+            validateButton.disabled = true; // Désactiver le bouton pendant le chargement
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json(); // Tente de parser la réponse en JSON
+
+                if (response.ok) { // Si la réponse HTTP est OK (200-299)
+                    if (data.error) {
+                        showMessage(`Erreur du script: ${data.error}`, 'error');
+                        showNoResults(); // Afficher le message "Aucun résultat" en cas d'erreur du script
+                    } else if (Array.isArray(data) && data.length > 0) {
+                        // Afficher les résultats dans les champs spécifiques
+                        const item = data[0]; // On prend le premier résultat car LIMIT 10
+
+                        soldeValue.textContent = item.Solde !== undefined ? item.Solde : 'N/A';
+                        margeValue.textContent = item.Marge !== undefined ? item.Marge : 'N/A';
+                        chronoValue.textContent = item.Chrono !== undefined ? item.Chrono : 'N/A';
+                        modeleValue.textContent = item.Modele !== undefined ? item.Modele : 'N/A';
+                        refValue.textContent = item.Ref !== undefined ? item.Ref : 'N/A';
+                        couleurValue.textContent = item.Couleur !== undefined ? item.Couleur : 'N/A';
+                        universValue.textContent = item.Univers !== undefined ? item.Univers : 'N/A';
+                        segmentValue.textContent = item.Segment !== undefined ? item.Segment : 'N/A';
+                        familleValue.textContent = item.Famille !== undefined ? item.Famille : 'N/A';
+                        marqueValue.textContent = item.Marque !== undefined ? item.Marque : 'N/A';
+
+                        showMessage(`Trouvé ${data.length} résultat(s).`, 'success');
+                        noResultsMessage.classList.add('hidden'); // Cacher le message "Aucun résultat"
+                        productDetailsDiv.classList.remove('hidden'); // Afficher les détails
+                    } else {
+                        showNoResults(); // Afficher le message "Aucun résultat"
+                        showMessage("Aucun résultat trouvé pour cette recherche.", 'info');
+                    }
+                } else {
+                    // Gérer les erreurs HTTP (par exemple, 404, 500)
+                    showMessage(`Erreur HTTP: ${response.status} - ${response.statusText}. Réponse: ${JSON.stringify(data)}`, 'error');
+                    showNoResults(); // Afficher le message "Aucun résultat" en cas d'erreur HTTP
+                }
+
+            } catch (error) {
+                // Gérer les erreurs réseau ou de parsing JSON
+                showMessage(`Erreur de connexion ou de traitement: ${error.message}. Vérifiez la console pour plus de détails.`, 'error');
+                showNoResults(); // Afficher le message "Aucun résultat" en cas d'erreur de connexion
+                console.error("Erreur détaillée:", error);
+            } finally {
+                loadingIndicator.classList.add('hidden'); // Cacher l'indicateur de chargement
+                validateButton.disabled = false; // Réactiver le bouton
+            }
+        });
+    </script>
+</body>
+</html>
