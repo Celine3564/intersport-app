@@ -46,8 +46,9 @@
         #scanner-container {
             position: relative; /* Nécessaire pour positionner la ligne de scan */
             overflow: hidden; /* Cache la ligne de scan quand elle sort du conteneur */
-            /* Removed: display: flex, justify-content: center, align-items: center; */
-            /* These properties were causing the button to misalign */
+            display: flex; /* Utiliser flexbox */
+            flex-direction: column; /* Empiler les éléments verticalement */
+            align-items: center; /* Centrer les éléments horizontalement */
         }
 
         #scanner-video {
@@ -417,7 +418,11 @@
         }
 
         // Charger la liste des magasins au chargement de la page
-        document.addEventListener('DOMContentLoaded', populateMagasinList);
+        document.addEventListener('DOMContentLoaded', () => {
+            populateMagasinList();
+            // Empêcher le lancement automatique du scanner si le navigateur met le focus sur le champ EAN
+            eanInput.blur();
+        });
 
 
         // --- Logique de Validation ---
