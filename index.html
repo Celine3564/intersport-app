@@ -280,7 +280,7 @@
                     ZXing.BarcodeFormat.QR_CODE // Si vous scannez aussi des QR codes
                 ];
                 hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, allowedFormats);
-                hints.set(ZXing.DecodeHintType.TRY_HARDER, true); // Activer TRY_HARDER pour une détection plus agressive
+                // hints.set(ZXing.DecodeHintType.TRY_HARDER, true); // Désactivé pour potentiellement améliorer la vitesse
 
                 // Initialiser le lecteur avec les hints et un intervalle de décodage plus court
                 codeReader = new ZXing.BrowserMultiFormatReader(hints, 100); // Intervalle de décodage réduit à 100ms
@@ -493,4 +493,3 @@
     </script>
 </body>
 </html>
-```
