@@ -33,7 +33,7 @@
             height: 2px;
             background-color: #34D399; /* Vert fluo de Tailwind (emerald-400) */
             box-shadow: 0 0 8px rgba(52, 211, 153, 0.8);
-            animation: scan-animation 2s infinite alternate; /* Animation de balayage */
+            animation: scan-animation 1.5s infinite alternate; /* Animation de balayage plus rapide */
             z-index: 10; /* Assure que la ligne est au-dessus de la vidéo */
         }
 
@@ -255,10 +255,10 @@
                     ZXing.BarcodeFormat.QR_CODE // Si vous scannez aussi des QR codes
                 ];
                 hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, allowedFormats);
-                // hints.set(ZXing.DecodeHintType.TRY_HARDER, true); // Peut augmenter la consommation CPU
+                hints.set(ZXing.DecodeHintType.TRY_HARDER, true); // Activer TRY_HARDER pour une détection plus agressive
 
                 // Initialiser le lecteur avec les hints et un intervalle de décodage plus court
-                codeReader = new ZXing.BrowserMultiFormatReader(hints, 200); // 200ms entre les tentatives de décodage
+                codeReader = new ZXing.BrowserMultiFormatReader(hints, 100); // Intervalle de décodage réduit à 100ms
 
                 const videoInputDevices = await codeReader.getVideoInputDevices();
 
