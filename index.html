@@ -368,7 +368,8 @@
             }
         }
 
-        eanInput.addEventListener('focus', startScanner);
+        // Changement ici : 'focus' remplacé par 'click'
+        eanInput.addEventListener('click', startScanner);
         stopScannerButton.addEventListener('click', stopScanner);
 
         function stopScanner() {
@@ -420,8 +421,7 @@
         // Charger la liste des magasins au chargement de la page
         document.addEventListener('DOMContentLoaded', () => {
             populateMagasinList();
-            // Empêcher le lancement automatique du scanner si le navigateur met le focus sur le champ EAN
-            eanInput.blur();
+            // Suppression de eanInput.blur() car le déclencheur est maintenant 'click'
         });
 
 
