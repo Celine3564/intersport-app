@@ -46,9 +46,8 @@
         #scanner-container {
             position: relative; /* Nécessaire pour positionner la ligne de scan */
             overflow: hidden; /* Cache la ligne de scan quand elle sort du conteneur */
-            display: flex; /* Utiliser flexbox pour centrer la vidéo et le cadre */
-            justify-content: center;
-            align-items: center;
+            /* Removed: display: flex, justify-content: center, align-items: center; */
+            /* These properties were causing the button to misalign */
         }
 
         #scanner-video {
@@ -110,7 +109,7 @@
 
         <!-- Zone du scanner vidéo -->
         <div id="scanner-container" class="hidden mb-4 p-2 bg-gray-100 rounded-lg border border-gray-300">
-            <video id="scanner-video" class="w-full h-64 bg-gray-200 rounded-lg"></video>
+            <video id="scanner-video" class="w-full h-64 bg-gray-200 rounded-lg" autoplay playsinline></video>
             <div id="scan-frame" class="scan-frame"></div> <!-- Nouveau cadre de scan -->
             <div id="scanner-line" class="scanner-line"></div> <!-- Ligne de scan ajoutée ici -->
             <button id="stopScannerButton" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-2 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 transition duration-300 shadow-md transform hover:scale-105">
@@ -347,7 +346,18 @@
                 });
             } catch (err) {
                 console.error(err);
-                showMessage('Impossible d\'accéder à la caméra. Assurez-vous d\'avoir autorisé l\'accès et qu\'aucune autre application ne l\'utilise.', 'error');
+                // Messages d'erreur plus spécifiques pour l'utilisateur
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    showMessage('Accès à la caméra refusé. Veuillez autoriser l\'accès à la caméra dans les paramètres de votre navigateur pour ce site.', 'error');
+                } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                    showMessage('Aucune caméra détectée. Veuillez vérifier que votre appareil dispose d\'une caméra et qu\'elle est connectée.', 'error');
+                } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+                    showMessage('La caméra est peut-être déjà utilisée par une autre application. Veuillez fermer les autres applications utilisant la caméra et réessayer.', 'error');
+                } else if (err.name === 'OverconstrainedError') {
+                    showMessage('La caméra ne peut pas satisfaire les exigences de résolution. Essayez avec une autre caméra ou ajustez les paramètres.', 'error');
+                } else {
+                    showMessage(`Impossible d\'accéder à la caméra. Erreur: ${err.message}.`, 'error');
+                }
                 scannerContainer.classList.add('hidden');
                 scannerLine.style.display = 'none'; // Cacher la ligne de scan
                 scanFrame.style.display = 'none'; // Cacher le cadre de scan
