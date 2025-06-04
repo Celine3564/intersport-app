@@ -266,6 +266,8 @@
                         eanInput.value = result.getText();
                         showMessage(`Code EAN scanné : ${result.getText()}`, 'success');
                         stopScanner(); // Arrêter le scanner après un scan réussi
+                        // NOUVELLE MODIFICATION ICI : Déclencher le clic sur le bouton Valider saisie
+                        validateButton.click(); 
                     }
                     if (err && !(err instanceof ZXing.NotFoundException)) {
                         console.error(err);
