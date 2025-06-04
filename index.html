@@ -116,24 +116,19 @@
         <div id="resultsDisplay" class="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
             <h2 class="text-xl font-bold text-gray-800 mb-4">Détails du Produit</h2>
             <!-- Nouvelle mise en page des résultats : tout en ligne (flex-col) -->
+            <!-- Changé de grid grid-cols-2 à flex flex-col pour un affichage en ligne verticale -->
             <div id="productDetails" class="flex flex-col gap-2">
-                <!-- Colonne de gauche -->
-                <div>
-                    <p><span class="result-label">Solde :</span> <span id="soldeValue" class="result-value"></span></p>
-                    <p><span class="result-label">Marge :</span> <span id="margeValue" class="result-value"></span></p>
-                    <!-- Ligne horizontale retirée car plus nécessaire avec la mise en ligne -->
-                </div>
-                <!-- Colonne de droite avec ligne verticale retirée et contenu déplacé -->
-                <div>
-                    <p><span class="result-label">Chrono :</span> <span id="chronoValue" class="result-value"></span></p>
-                    <p><span class="result-label">Modèle :</span> <span id="modeleValue" class="result-value"></span></p>
-                    <p><span class="result-label">Ref :</span> <span id="refValue" class="result-value"></span></p>
-                    <p><span class="result-label">Couleur :</span> <span id="couleurValue" class="result-value"></span></p>
-                    <p><span class="result-label">Univers :</span> <span id="universValue" class="result-value"></span></p>
-                    <p><span class="result-label">Segment :</span> <span id="segmentValue" class="result-value"></span></p>
-                    <p><span class="result-label">Famille :</span> <span id="familleValue" class="result-value"></span></p>
-                    <p><span class="result-label">Marque :</span> <span id="marqueValue" class="result-value"></span></p>
-                </div>
+                <!-- Chaque p est une ligne, pas besoin de div séparées pour les colonnes -->
+                <p><span class="result-label">Solde :</span> <span id="soldeValue" class="result-value"></span></p>
+                <p><span class="result-label">Marge :</span> <span id="margeValue" class="result-value"></span></p>
+                <p><span class="result-label">Chrono :</span> <span id="chronoValue" class="result-value"></span></p>
+                <p><span class="result-label">Modèle :</span> <span id="modeleValue" class="result-value"></span></p>
+                <p><span class="result-label">Ref :</span> <span id="refValue" class="result-value"></span></p>
+                <p><span class="result-label">Couleur :</span> <span id="couleurValue" class="result-value"></span></p>
+                <p><span class="result-label">Univers :</span> <span id="universValue" class="result-value"></span></p>
+                <p><span class="result-label">Segment :</span> <span id="segmentValue" class="result-value"></span></p>
+                <p><span class="result-label">Famille :</span> <span id="familleValue" class="result-value"></span></p>
+                <p><span class="result-label">Marque :</span> <span id="marqueValue" class="result-value"></span></p>
             </div>
             <p id="noResultsMessage" class="text-gray-500 mt-4 hidden text-base">Aucun résultat trouvé pour cette recherche.</p>
         </div>
@@ -244,7 +239,11 @@
                     codeReader.reset(); // Réinitialise le décodeur pour éviter les conflits
                     codeReader = null; // Libérer l'ancienne instance
                 }
-                
+                scannerVideo.srcObject = null; // Explicitly clear source
+                scannerVideo.pause(); // Ensure it's paused
+                scannerVideo.currentTime = 0; // Reset time
+                // await new Promise(resolve => setTimeout(resolve, 50)); // Optional, but can help with race conditions
+
                 // Configurer les hints pour ZXing
                 const hints = new Map();
                 const allowedFormats = [
