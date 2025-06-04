@@ -33,7 +33,7 @@
             height: 2px;
             background-color: #34D399; /* Vert fluo de Tailwind (emerald-400) */
             box-shadow: 0 0 8px rgba(52, 211, 153, 0.8);
-            animation: scan-animation 0.8s infinite alternate; /* Animation de balayage plus rapide */
+            animation: scan-animation 0.6s infinite alternate; /* Animation de balayage encore plus rapide */
             z-index: 10; /* Assure que la ligne est au-dessus de la vidéo */
         }
 
@@ -46,6 +46,28 @@
         #scanner-container {
             position: relative; /* Nécessaire pour positionner la ligne de scan */
             overflow: hidden; /* Cache la ligne de scan quand elle sort du conteneur */
+            display: flex; /* Utiliser flexbox pour centrer la vidéo et le cadre */
+            justify-content: center;
+            align-items: center;
+        }
+
+        #scanner-video {
+            position: relative; /* Permet à la ligne de scan d'être positionnée par rapport à elle */
+            z-index: 5; /* En dessous de la ligne de scan */
+        }
+
+        /* Nouveau style pour le cadre de scan */
+        .scan-frame {
+            position: absolute;
+            top: 10%; /* Ajustez pour centrer verticalement */
+            left: 10%; /* Ajustez pour centrer horizontalement */
+            width: 80%; /* Largeur du cadre */
+            height: 80%; /* Hauteur du cadre */
+            border: 2px solid #34D399; /* Couleur du cadre */
+            box-shadow: 0 0 15px rgba(52, 211, 153, 0.6);
+            z-index: 8; /* Entre la vidéo et la ligne de scan */
+            pointer-events: none; /* Permet de cliquer à travers le cadre */
+            border-radius: 8px; /* Coins arrondis pour le cadre */
         }
     </style>
 </head>
@@ -89,6 +111,7 @@
         <!-- Zone du scanner vidéo -->
         <div id="scanner-container" class="hidden mb-4 p-2 bg-gray-100 rounded-lg border border-gray-300">
             <video id="scanner-video" class="w-full h-64 bg-gray-200 rounded-lg"></video>
+            <div id="scan-frame" class="scan-frame"></div> <!-- Nouveau cadre de scan -->
             <div id="scanner-line" class="scanner-line"></div> <!-- Ligne de scan ajoutée ici -->
             <button id="stopScannerButton" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg mt-2 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 transition duration-300 shadow-md transform hover:scale-105">
                 Arrêter le Scanner
@@ -168,6 +191,7 @@
         const scannerVideo = document.getElementById('scanner-video');
         const stopScannerButton = document.getElementById('stopScannerButton');
         const scannerLine = document.getElementById('scanner-line'); // Référence à la ligne de scan
+        const scanFrame = document.getElementById('scan-frame'); // Référence au cadre de scan
         let codeReader = null; // Initialiser à null
         let currentStream = null; // Initialiser à null
         let isScanning = false; // Nouvelle variable pour suivre l'état du scanner
@@ -225,6 +249,7 @@
             hideMessage();
             scannerContainer.classList.remove('hidden');
             scannerLine.style.display = 'block'; // Afficher la ligne de scan
+            scanFrame.style.display = 'block'; // Afficher le cadre de scan
             eanInput.disabled = true;
             eanInput.value = 'Recherche de code-barres...'; // Message plus explicite
             isScanning = true; // Mettre à jour l'état du scanner
@@ -280,6 +305,7 @@
                     showMessage('Aucune caméra trouvée.', 'error');
                     scannerContainer.classList.add('hidden');
                     scannerLine.style.display = 'none'; // Cacher la ligne de scan
+                    scanFrame.style.display = 'none'; // Cacher le cadre de scan
                     eanInput.disabled = false;
                     eanInput.value = ''; // Effacer le message "Scanner en cours..."
                     isScanning = false; // Mettre à jour l'état
@@ -290,7 +316,10 @@
                 currentStream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         deviceId: selectedDeviceId,
-                        facingMode: rearCamera ? 'environment' : undefined // Préférer 'environment' si une caméra arrière est identifiée
+                        facingMode: rearCamera ? 'environment' : undefined, // Préférer 'environment' si une caméra arrière est identifiée
+                        width: { ideal: 1280 }, // Tenter une résolution spécifique
+                        height: { ideal: 720 },
+                        aspectRatio: { ideal: 1.777 } // 16:9
                     }
                 });
                 scannerVideo.srcObject = currentStream;
@@ -321,6 +350,7 @@
                 showMessage('Impossible d\'accéder à la caméra. Assurez-vous d\'avoir autorisé l\'accès et qu\'aucune autre application ne l\'utilise.', 'error');
                 scannerContainer.classList.add('hidden');
                 scannerLine.style.display = 'none'; // Cacher la ligne de scan
+                scanFrame.style.display = 'none'; // Cacher le cadre de scan
                 eanInput.disabled = false;
                 eanInput.value = ''; // Effacer le message "Scanner en cours..."
                 isScanning = false; // Mettre à jour l'état
@@ -349,6 +379,7 @@
 
             scannerContainer.classList.add('hidden');
             scannerLine.style.display = 'none'; // Cacher la ligne de scan
+            scanFrame.style.display = 'none'; // Cacher le cadre de scan
             eanInput.disabled = false;
             // Réinitialiser le placeholder si le champ est vide après l'arrêt du scanner
             if (eanInput.value === 'Recherche de code-barres...') { // Mise à jour du message
@@ -462,3 +493,4 @@
     </script>
 </body>
 </html>
+```
