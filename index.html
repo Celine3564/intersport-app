@@ -21,7 +21,7 @@
         }
         /* Styles pour les bordures des sections */
         .section-border {
-            @apply border-t border-gray-300 pt-4 mt-4;
+            @apply border-t-2 border-gray-400 pt-4 mt-4; /* Bords plus épais et plus foncés */
         }
 
         /* Styles pour la ligne de scan animée */
@@ -85,7 +85,7 @@
                 <img src="https://placehold.co/100x33/000/fff?text=LOGO" alt="Logo INTERSPORT" class="rounded">
             </div>
             <div class="w-full md:w-auto md:ml-6">
-                <label for="magasinSelect" class="block text-gray-700 text-base font-semibold mb-2">Choix magasin :</label>
+                <!-- Titre "Choix magasin :" retiré -->
                 <select id="magasinSelect"
                         class="shadow-sm border border-gray-300 rounded-lg w-full py-2 px-3 text-gray-700 text-base leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200">
                     <!-- Les options seront ajoutées par JavaScript -->
@@ -98,8 +98,8 @@
         <!-- Section Saisie code chrono et Bouton Valider -->
         <div class="mb-4 mt-6 flex flex-col md:flex-row items-end md:space-x-4">
             <div class="flex-grow w-full mb-4 md:mb-0">
-                <label for="chronoInput" class="block text-gray-700 text-base font-semibold mb-2">Saisie code chrono :</label>
-                <input type="text" id="chronoInput" placeholder="Ex: 961-6888"
+                <!-- Titre "Saisie code chrono :" retiré -->
+                <input type="text" id="chronoInput" placeholder="Saisir code chrono"
                        class="shadow-sm appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 text-base leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200">
             </div>
             <button id="validateButton"
@@ -110,8 +110,8 @@
 
         <!-- Section EAN (cliquez pour scanner) -->
         <div class="mb-6">
-            <label for="eanInput" class="block text-gray-700 text-base font-semibold mb-2">Cliquer ICI pour scanner :</label>
-            <input type="text" id="eanInput" placeholder="Cliquez ici pour scanner" readonly
+            <!-- Titre "Cliquer ICI pour scanner :" retiré -->
+            <input type="text" id="eanInput" placeholder="Cliquer ICI pour scanner" readonly
                    class="shadow-sm appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 text-base leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200 cursor-pointer text-center">
         </div>
 
@@ -142,32 +142,36 @@
         <div id="resultsDisplay" class="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
             <h2 class="text-xl font-bold text-gray-800 mb-4">Détails du Produit</h2>
             
-            <!-- Mise en page des résultats : Solde, Stock, Marge sur une ligne -->
-            <!-- Note: L'ID productDetails est maintenant sur ce conteneur global des résultats -->
+            <!-- Mise en page des résultats : Solde, Stock, Marge sur une ligne, le reste en "tableau" -->
             <div id="productDetails" class="flex flex-col"> 
+                <!-- Ligne SOLDE, STOCK, MARGE -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
-                    <p><span class="result-label">SOLDE :</span> <span id="soldeValue" class="result-value"></span></p>
+                    <p><span class="result-label text-lg font-bold">SOLDE :</span> <span id="soldeValue" class="result-value text-lg font-bold"></span></p>
                     <p><span class="result-label">Stock :</span> <span id="stockValue" class="result-value"></span></p>
                     <p><span class="result-label">MARGE :</span> <span id="margeValue" class="result-value"></span></p>
                 </div>
 
-                <!-- Trait de séparation avant Chrono -->
-                <div class="section-border my-4"></div> 
+                <!-- Trait de séparation avant Chrono (marge réduite) -->
+                <div class="section-border my-2"></div> 
 
-                <!-- Chrono à Couleur -->
-                <p><span class="result-label">Chrono :</span> <span id="chronoValue" class="result-value"></span></p>
-                <p><span class="result-label">Modèle :</span> <span id="modeleValue" class="result-value"></span></p>
-                <p><span class="result-label">Ref :</span> <span id="refValue" class="result-value"></span></p>
-                <p><span class="result-label">Couleur :</span> <span id="couleurValue" class="result-value"></span></p>
+                <!-- Groupe Chrono à Couleur en format tableau (grid-cols-[auto_1fr]) -->
+                <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+                    <p class="result-label">Chrono :</p><p class="result-value" id="chronoValue"></p>
+                    <p class="result-label">Modèle :</p><p class="result-value" id="modeleValue"></p>
+                    <p class="result-label">Ref :</p><p class="result-value" id="refValue"></p>
+                    <p class="result-label">Couleur :</p><p class="result-value" id="couleurValue"></p>
+                </div>
 
                 <!-- Trait de séparation après Couleur -->
                 <div class="section-border my-4"></div> 
 
-                <!-- Reste des détails -->
-                <p><span class="result-label">Univers :</span> <span id="universValue" class="result-value"></span></p>
-                <p><span class="result-label">Segment :</span> <span id="segmentValue" class="result-value"></span></p>
-                <p><span class="result-label">Famille :</span> <span id="familleValue" class="result-value"></span></p>
-                <p><span class="result-label">Marque :</span> <span id="marqueValue" class="result-value"></span></p>
+                <!-- Reste des détails en format tableau (grid-cols-[auto_1fr]) -->
+                <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+                    <p class="result-label">Univers :</p><p class="result-value" id="universValue"></p>
+                    <p class="result-label">Segment :</p><p class="result-value" id="segmentValue"></p>
+                    <p class="result-label">Famille :</p><p class="result-value" id="familleValue"></p>
+                    <p class="result-label">Marque :</p><p class="result-value" id="marqueValue"></p>
+                </div>
             </div>
             <p id="noResultsMessage" class="text-gray-500 mt-4 hidden text-base">Aucun résultat trouvé pour cette recherche.</p>
         </div>
@@ -189,7 +193,7 @@
         const messageBox = document.getElementById('messageBox');
 
         // Éléments d'affichage des résultats
-        const productDetailsDiv = document.getElementById('productDetails'); // Reste sur le conteneur principal des détails
+        const productDetailsDiv = document.getElementById('productDetails'); 
         const noResultsMessage = document.getElementById('noResultsMessage');
         const soldeValue = document.getElementById('soldeValue');
         const stockValue = document.getElementById('stockValue'); 
@@ -481,7 +485,7 @@
                         stockValue.textContent = item.Stock !== undefined ? item.Stock : 'N/A'; 
                         margeValue.textContent = item.Marge !== undefined ? item.Marge : 'N/A';
                         chronoValue.textContent = item.Chrono !== undefined ? item.Chrono : 'N/A';
-                        modeleValue.textContent = item.Modele !== undefined ? item.Modele : 'N/A';
+                        modeleValue.textContent = item.Modèle !== undefined ? item.Modèle : 'N/A'; // Assurez-vous que le champ est 'Modèle' ou 'Modele'
                         refValue.textContent = item.Ref !== undefined ? item.Ref : 'N/A';
                         couleurValue.textContent = item.Couleur !== undefined ? item.Couleur : 'N/A';
                         universValue.textContent = item.Univers !== undefined ? item.Univers : 'N/A';
