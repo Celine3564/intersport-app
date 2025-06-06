@@ -46,7 +46,6 @@
         #scanner-container {
             position: relative; /* Nécessaire pour positionner la ligne et le cadre */
             overflow: hidden; /* Cache la ligne de scan quand elle sort du conteneur */
-            /* Pas de propriétés flex ici, le parent #full-scanner-area gère le layout */
         }
 
         #scanner-video {
@@ -77,40 +76,43 @@
     </style>
 </head>
 <body class="flex items-center justify-center min-h-screen p-4">
-    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-lg border border-gray-200">
-        <!-- En-tête INTERSPORT -->
-        <div class="text-center mb-8">
-            <!-- Taille du logo ajustée : de 100x33 à 120x40 -->
-            <img src="https://placehold.co/120x40/000/fff?text=INTERSPORT" alt="Logo INTERSPORT" class="mx-auto mb-3 rounded">
-            <!-- La ligne "Le sport, la plus belle des rencontres" a été supprimée -->
-        </div>
-
-        <!-- Section Choisir un magasin -->
-        <div class="mb-6">
-            <label for="magasinSelect" class="block text-gray-700 text-base font-semibold mb-2">Choisir un magasin :</label>
-            <!-- Liste déroulante pour les magasins -->
-            <select id="magasinSelect"
-                    class="shadow-sm border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 text-base leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200">
-                <!-- Les options seront ajoutées par JavaScript -->
-            </select>
+    <!-- Conteneur principal de l'application -->
+    <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-xl border border-gray-200">
+        <!-- En-tête : Logo et Choix magasin -->
+        <div class="flex flex-col md:flex-row items-center md:justify-between mb-8">
+            <div class="mb-4 md:mb-0">
+                <!-- LOGO INTERSPORT (ajusté selon votre modèle) -->
+                <img src="https://placehold.co/100x33/000/fff?text=LOGO" alt="Logo INTERSPORT" class="rounded">
+            </div>
+            <div class="w-full md:w-auto md:ml-6">
+                <label for="magasinSelect" class="block text-gray-700 text-base font-semibold mb-2">Choix magasin :</label>
+                <select id="magasinSelect"
+                        class="shadow-sm border border-gray-300 rounded-lg w-full py-2 px-3 text-gray-700 text-base leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200">
+                    <!-- Les options seront ajoutées par JavaScript -->
+                </select>
+            </div>
         </div>
 
         <div class="section-border"></div>
 
-        <!-- Section Saisie et Scan -->
-        <div class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-            <div>
-                <label for="chronoInput" class="block text-gray-700 text-base font-semibold mb-2">Saisir code chrono :</label>
+        <!-- Section Saisie code chrono et Bouton Valider -->
+        <div class="mb-4 mt-6 flex flex-col md:flex-row items-end md:space-x-4">
+            <div class="flex-grow w-full mb-4 md:mb-0">
+                <label for="chronoInput" class="block text-gray-700 text-base font-semibold mb-2">Saisie code chrono :</label>
                 <input type="text" id="chronoInput" placeholder="Ex: 961-6888"
                        class="shadow-sm appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 text-base leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200">
             </div>
-            <div>
-                <label for="eanInput" class="block text-gray-700 text-base font-semibold mb-2">EAN (cliquez pour scanner) :</label>
-                <div class="flex space-x-2">
-                    <input type="text" id="eanInput" placeholder="Cliquez ici pour scanner" readonly
-                           class="shadow-sm appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 text-base leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200 cursor-pointer">
-                </div>
-            </div>
+            <button id="validateButton"
+                    class="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-300 shadow-md transform hover:scale-105">
+                Valider
+            </button>
+        </div>
+
+        <!-- Section EAN (cliquez pour scanner) -->
+        <div class="mb-6">
+            <label for="eanInput" class="block text-gray-700 text-base font-semibold mb-2">Cliquer ICI pour scanner :</label>
+            <input type="text" id="eanInput" placeholder="Cliquez ici pour scanner" readonly
+                   class="shadow-sm appearance-none border border-gray-300 rounded-lg w-full py-3 px-4 text-gray-700 text-base leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200 cursor-pointer text-center">
         </div>
 
         <!-- Zone du scanner vidéo et bouton (nouveau conteneur parent) -->
@@ -126,13 +128,6 @@
             </button>
         </div>
 
-        <!-- Bouton Valider Saisie -->
-        <!-- Réduction de l'espace après le bouton (mb-4 au lieu de mb-6) -->
-        <button id="validateButton"
-                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-300 shadow-md transform hover:scale-105 mb-4">
-            Valider saisie
-        </button>
-
         <div class="section-border"></div>
 
         <!-- Indicateur de chargement -->
@@ -146,16 +141,29 @@
         <!-- Zone de résultats détaillés -->
         <div id="resultsDisplay" class="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
             <h2 class="text-xl font-bold text-gray-800 mb-4">Détails du Produit</h2>
-            <!-- Nouvelle mise en page des résultats : tout en ligne (flex-col) -->
-            <!-- Changé de grid grid-cols-2 à flex flex-col pour un affichage en ligne verticale -->
-            <div id="productDetails" class="flex flex-col gap-2">
-                <!-- Chaque p est une ligne, pas besoin de div séparées pour les colonnes -->
-                <p><span class="result-label">Solde :</span> <span id="soldeValue" class="result-value"></span></p>
-                <p><span class="result-label">Marge :</span> <span id="margeValue" class="result-value"></span></p>
+            
+            <!-- Mise en page des résultats : Solde, Stock, Marge sur une ligne -->
+            <!-- Note: L'ID productDetails est maintenant sur ce conteneur global des résultats -->
+            <div id="productDetails" class="flex flex-col"> 
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
+                    <p><span class="result-label">SOLDE :</span> <span id="soldeValue" class="result-value"></span></p>
+                    <p><span class="result-label">Stock :</span> <span id="stockValue" class="result-value"></span></p>
+                    <p><span class="result-label">MARGE :</span> <span id="margeValue" class="result-value"></span></p>
+                </div>
+
+                <!-- Trait de séparation avant Chrono -->
+                <div class="section-border my-4"></div> 
+
+                <!-- Chrono à Couleur -->
                 <p><span class="result-label">Chrono :</span> <span id="chronoValue" class="result-value"></span></p>
                 <p><span class="result-label">Modèle :</span> <span id="modeleValue" class="result-value"></span></p>
                 <p><span class="result-label">Ref :</span> <span id="refValue" class="result-value"></span></p>
                 <p><span class="result-label">Couleur :</span> <span id="couleurValue" class="result-value"></span></p>
+
+                <!-- Trait de séparation après Couleur -->
+                <div class="section-border my-4"></div> 
+
+                <!-- Reste des détails -->
                 <p><span class="result-label">Univers :</span> <span id="universValue" class="result-value"></span></p>
                 <p><span class="result-label">Segment :</span> <span id="segmentValue" class="result-value"></span></p>
                 <p><span class="result-label">Famille :</span> <span id="familleValue" class="result-value"></span></p>
@@ -181,9 +189,10 @@
         const messageBox = document.getElementById('messageBox');
 
         // Éléments d'affichage des résultats
-        const productDetailsDiv = document.getElementById('productDetails');
+        const productDetailsDiv = document.getElementById('productDetails'); // Reste sur le conteneur principal des détails
         const noResultsMessage = document.getElementById('noResultsMessage');
         const soldeValue = document.getElementById('soldeValue');
+        const stockValue = document.getElementById('stockValue'); 
         const margeValue = document.getElementById('margeValue');
         const chronoValue = document.getElementById('chronoValue');
         const modeleValue = document.getElementById('modeleValue');
@@ -195,15 +204,15 @@
         const marqueValue = document.getElementById('marqueValue');
 
         // Éléments du scanner
-        const fullScannerArea = document.getElementById('full-scanner-area'); // Nouveau conteneur parent
-        const scannerContainer = document.getElementById('scanner-container'); // L'ancien conteneur, maintenant imbriqué
+        const fullScannerArea = document.getElementById('full-scanner-area'); 
+        const scannerContainer = document.getElementById('scanner-container'); 
         const scannerVideo = document.getElementById('scanner-video');
         const stopScannerButton = document.getElementById('stopScannerButton');
-        const scannerLine = document.getElementById('scanner-line'); // Référence à la ligne de scan
-        const scanFrame = document.getElementById('scan-frame'); // Référence au cadre de scan
-        let codeReader = null; // Initialiser à null
-        let currentStream = null; // Initialiser à null
-        let isScanning = false; // Nouvelle variable pour suivre l'état du scanner
+        const scannerLine = document.getElementById('scanner-line'); 
+        const scanFrame = document.getElementById('scan-frame'); 
+        let codeReader = null; 
+        let currentStream = null; 
+        let isScanning = false; 
 
         // Fonction pour afficher des messages (erreurs, infos)
         function showMessage(message, type = 'info') {
@@ -211,9 +220,9 @@
             messageBox.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-blue-100', 'text-blue-700');
             if (type === 'error') {
                 messageBox.classList.add('bg-red-100', 'text-red-700');
-            } else if (type === 'success') { // Le type 'success' est toujours traité comme info ici
+            } else if (type === 'success') { 
                 messageBox.classList.add('bg-blue-100', 'text-blue-700');
-            } else { // info
+            } else { 
                 messageBox.classList.add('bg-blue-100', 'text-blue-700');
             }
             messageBox.classList.remove('hidden');
@@ -228,6 +237,7 @@
         // Fonction pour réinitialiser les champs d'affichage des résultats
         function resetProductDetails() {
             soldeValue.textContent = '';
+            stockValue.textContent = ''; 
             margeValue.textContent = '';
             chronoValue.textContent = '';
             modeleValue.textContent = '';
@@ -237,104 +247,95 @@
             segmentValue.textContent = '';
             familleValue.textContent = '';
             marqueValue.textContent = '';
-            productDetailsDiv.classList.remove('hidden');
+            productDetailsDiv.classList.remove('hidden'); // Garde la section des détails visible pour l'affichage
             noResultsMessage.classList.add('hidden');
         }
 
         // Fonction pour afficher "Aucun résultat"
         function showNoResults() {
             resetProductDetails();
-            productDetailsDiv.classList.add('hidden');
+            productDetailsDiv.classList.add('hidden'); // Cache la section des détails si aucun résultat
             noResultsMessage.classList.remove('hidden');
         }
 
         // --- Logique du Scanner ---
         async function startScanner() {
-            console.log("startScanner() appelé. isScanning:", isScanning); // Log pour le débogage
-            if (isScanning) { // Empêcher de démarrer si déjà en cours
+            console.log("startScanner() appelé. isScanning:", isScanning); 
+            if (isScanning) { 
                 showMessage('Le scanner est déjà actif.', 'info');
                 return;
             }
 
             hideMessage();
-            fullScannerArea.style.display = 'flex'; // Afficher le conteneur parent (qui est flex)
-            // Les éléments internes (ligne, cadre) sont visibles car leur parent est visible
+            fullScannerArea.style.display = 'flex'; // Afficher le conteneur parent
             eanInput.disabled = true;
-            eanInput.value = 'Recherche de code-barres...'; // Message plus explicite
-            isScanning = true; // Mettre à jour l'état du scanner
+            eanInput.value = 'Recherche de code-barres...'; 
+            isScanning = true; 
 
             try {
-                // Arrêter tout flux et réinitialiser le lecteur avant de commencer
                 if (currentStream) {
-                    console.log("Arrêt du flux vidéo existant."); // Log pour le débogage
+                    console.log("Arrêt du flux vidéo existant."); 
                     currentStream.getTracks().forEach(track => track.stop());
                     currentStream = null;
                 }
                 if (codeReader) {
-                    console.log("Réinitialisation du codeReader existant."); // Log pour le débogage
-                    codeReader.reset(); // Réinitialise le décodeur pour éviter les conflits
-                    codeReader = null; // Libérer l'ancienne instance
+                    console.log("Réinitialisation du codeReader existant."); 
+                    codeReader.reset(); 
+                    codeReader = null; 
                 }
-                scannerVideo.srcObject = null; // Explicitly clear source
-                scannerVideo.pause(); // Ensure it's paused
-                scannerVideo.currentTime = 0; // Reset time
-                // await new Promise(resolve => setTimeout(resolve, 50)); // Optional, but can help with race conditions
+                scannerVideo.srcObject = null; 
+                scannerVideo.pause(); 
+                scannerVideo.currentTime = 0; 
 
-                // Configurer les hints pour ZXing
                 const hints = new Map();
                 const allowedFormats = [
                     ZXing.BarcodeFormat.EAN_13,
                     ZXing.BarcodeFormat.EAN_8,
                     ZXing.BarcodeFormat.UPC_A,
                     ZXing.BarcodeFormat.UPC_E,
-                    ZXing.BarcodeFormat.CODE_128, // Ajouter d'autres formats courants si nécessaire
-                    ZXing.BarcodeFormat.QR_CODE // Si vous scannez aussi des QR codes
+                    ZXing.BarcodeFormat.CODE_128, 
+                    ZXing.BarcodeFormat.QR_CODE 
                 ];
                 hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, allowedFormats);
-                // hints.set(ZXing.DecodeHintType.TRY_HARDER, true); // Désactivé pour potentiellement améliorer la vitesse
-
-                // Initialiser le lecteur avec les hints et un intervalle de décodage plus court
-                codeReader = new ZXing.BrowserMultiFormatReader(hints, 100); // Intervalle de décodage réduit à 100ms
+                
+                codeReader = new ZXing.BrowserMultiFormatReader(hints, 100); 
 
                 const videoInputDevices = await codeReader.getVideoInputDevices();
-                console.log("Périphériques vidéo trouvés:", videoInputDevices); // Log pour le débogage
+                console.log("Périphériques vidéo trouvés:", videoInputDevices); 
 
                 let selectedDeviceId;
-                // Tenter de trouver la caméra arrière (facingMode: 'environment')
                 const rearCamera = videoInputDevices.find(device =>
-                    device.label.toLowerCase().includes('back') || // Vérifier le label pour "back"
-                    device.label.toLowerCase().includes('environment') || // Vérifier le label pour "environment"
-                    (device.getCapabilities && device.getCapabilities().facingMode && device.getCapabilities().facingMode.includes('environment')) // Vérifier les capacités
+                    device.label.toLowerCase().includes('back') || 
+                    device.label.toLowerCase().includes('environment') || 
+                    (device.getCapabilities && device.getCapabilities().facingMode && device.getCapabilities().facingMode.includes('environment')) 
                 );
 
                 if (rearCamera) {
                     selectedDeviceId = rearCamera.deviceId;
                     showMessage('Utilisation de la caméra arrière...', 'info');
                 } else if (videoInputDevices.length > 0) {
-                    selectedDeviceId = videoInputDevices[0].deviceId; // Fallback à la première caméra trouvée
+                    selectedDeviceId = videoInputDevices[0].deviceId; 
                     showMessage('Caméra arrière non trouvée, utilisation de la première caméra disponible.', 'info');
                 } else {
                     showMessage('Aucune caméra trouvée.', 'error');
-                    fullScannerArea.style.display = 'none'; // Masquer le conteneur parent
+                    fullScannerArea.style.display = 'none'; 
                     eanInput.disabled = false;
-                    eanInput.value = ''; // Effacer le message "Scanner en cours..."
-                    isScanning = false; // Mettre à jour l'état
-                    return; // Sortir si aucune caméra
+                    eanInput.value = ''; 
+                    isScanning = false; 
+                    return; 
                 }
 
-                // Demander l'accès à la caméra avec facingMode 'environment' si possible
                 currentStream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         deviceId: selectedDeviceId,
-                        facingMode: rearCamera ? 'environment' : undefined, // Préférer 'environment' si une caméra arrière est identifiée
-                        width: { ideal: 1280 }, // Tenter une résolution spécifique
+                        facingMode: rearCamera ? 'environment' : undefined, 
+                        width: { ideal: 1280 }, 
                         height: { ideal: 720 },
-                        aspectRatio: { ideal: 1.777 } // 16:9
+                        aspectRatio: { ideal: 1.777 } 
                     }
                 });
                 scannerVideo.srcObject = currentStream;
-                console.log("Flux vidéo assigné. Tentative de lecture de la vidéo."); // Log pour le débogage
-                // Assurez-vous que la vidéo est chargée avant de tenter de la jouer
+                console.log("Flux vidéo assigné. Tentative de lecture de la vidéo."); 
                 scannerVideo.onloadedmetadata = () => {
                     scannerVideo.play().catch(e => {
                         console.error("Erreur lors du démarrage de la vidéo:", e);
@@ -347,18 +348,16 @@
                 codeReader.decodeFromVideoDevice(selectedDeviceId, 'scanner-video', (result, err) => {
                     if (result) {
                         eanInput.value = result.getText();
-                        showMessage(`Code EAN scanné : ${result.getText()}`, 'success'); // Ce message sera affiché comme info
-                        stopScanner(); // Arrêter le scanner après un scan réussi
-                        validateButton.click(); // Déclencher le clic sur le bouton Valider saisie
+                        showMessage(`Code EAN scanné : ${result.getText()}`, 'success'); 
+                        stopScanner(); 
+                        validateButton.click(); 
                     }
                     if (err && !(err instanceof ZXing.NotFoundException)) {
                         console.error(err);
-                        // Ne pas afficher d'erreur pour NotFoundException, c'est normal tant qu'aucun code n'est détecté
                     }
                 });
             } catch (err) {
-                console.error("Erreur dans startScanner():", err); // Log pour le débogage
-                // Messages d'erreur plus spécifiques pour l'utilisateur
+                console.error("Erreur dans startScanner():", err); 
                 if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
                     showMessage('Accès à la caméra refusé. Veuillez autoriser l\'accès à la caméra dans les paramètres de votre navigateur pour ce site.', 'error');
                 } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
@@ -370,48 +369,45 @@
                 } else {
                     showMessage(`Impossible d\'accéder à la caméra. Erreur: ${err.message}.`, 'error');
                 }
-                fullScannerArea.style.display = 'none'; // Masquer le conteneur parent
+                fullScannerArea.style.display = 'none'; 
                 eanInput.disabled = false;
-                eanInput.value = ''; // Effacer le message "Scanner en cours..."
-                isScanning = false; // Mettre à jour l'état
+                eanInput.value = ''; 
+                isScanning = false; 
             }
         }
 
-        // Changement ici : 'focus' remplacé par 'click'
         eanInput.addEventListener('click', startScanner);
         stopScannerButton.addEventListener('click', stopScanner);
 
         function stopScanner() {
-            console.log("stopScanner() appelé. isScanning:", isScanning); // Log pour le débogage
-            if (!isScanning) { // Ne rien faire si le scanner n'est pas actif
+            console.log("stopScanner() appelé. isScanning:", isScanning); 
+            if (!isScanning) { 
                 return;
             }
 
             if (codeReader) {
-                console.log("Réinitialisation du codeReader."); // Log pour le débogage
-                codeReader.reset(); // Arrête le décodage
-                codeReader = null; // Libérer l'instance
+                console.log("Réinitialisation du codeReader."); 
+                codeReader.reset(); 
+                codeReader = null; 
             }
             if (currentStream) {
-                console.log("Arrêt du flux vidéo."); // Log pour le débogage
-                currentStream.getTracks().forEach(track => track.stop()); // Arrête le flux vidéo
+                console.log("Arrêt du flux vidéo."); 
+                currentStream.getTracks().forEach(track => track.stop()); 
                 currentStream = null;
             }
-            scannerVideo.srcObject = null; // Détacher le flux vidéo
-            scannerVideo.pause(); // Mettre la vidéo en pause
-            scannerVideo.currentTime = 0; // Réinitialiser le temps de la vidéo
+            scannerVideo.srcObject = null; 
+            scannerVideo.pause(); 
+            scannerVideo.currentTime = 0; 
 
-            fullScannerArea.style.display = 'none'; // Masquer le conteneur parent
+            fullScannerArea.style.display = 'none'; 
             eanInput.disabled = false;
-            // Réinitialiser le placeholder si le champ est vide après l'arrêt du scanner
-            if (eanInput.value === 'Recherche de code-barres...') { // Mise à jour du message
+            if (eanInput.value === 'Recherche de code-barres...') { 
                 eanInput.value = '';
             }
-            isScanning = false; // Mettre à jour l'état
+            isScanning = false; 
             showMessage('Scanner arrêté.', 'info');
         }
 
-        // --- Logique de chargement des magasins (HARDCODÉE) ---
         async function populateMagasinList() {
             const magasins = [
                 "INTERSPORT URRUGNE",
@@ -419,26 +415,23 @@
                 "TOUS"
             ];
 
-            magasinSelect.innerHTML = '<option value="">-- Sélectionner un magasin --</option>'; // Option par défaut
-            magasinSelect.innerHTML += '<option value="TOUS">TOUS</option>'; // Option "TOUS" (doublon si déjà dans la liste, mais pour clarté)
+            magasinSelect.innerHTML = '<option value="">-- Sélectionner un magasin --</option>'; 
+            magasinSelect.innerHTML += '<option value="TOUS">TOUS</option>'; 
             magasins.forEach(magasin => {
-                if (magasin.toUpperCase() !== 'TOUS') { // Éviter le doublon si "TOUS" est déjà ajouté
+                if (magasin.toUpperCase() !== 'TOUS') { 
                     magasinSelect.innerHTML += `<option value="${magasin}">${magasin}</option>`;
                 }
             });
         }
 
-        // Charger la liste des magasins au chargement de la page
         document.addEventListener('DOMContentLoaded', () => {
-            console.log("DOMContentLoaded: Initialisation de la page."); // Log pour le débogage
+            console.log("DOMContentLoaded: Initialisation de la page."); 
             populateMagasinList();
-            // Le scanner est masqué par défaut grâce à style="display: none !important;" sur fullScannerArea
         });
 
 
-        // --- Logique de Validation ---
         validateButton.addEventListener('click', async () => {
-            hideMessage(); // Toujours cacher le message précédent au début d'une nouvelle validation
+            hideMessage(); 
             resetProductDetails();
 
             const chronoCode = chronoInput.value.trim();
@@ -485,6 +478,7 @@
                         const item = data[0];
 
                         soldeValue.textContent = item.Solde !== undefined ? item.Solde : 'N/A';
+                        stockValue.textContent = item.Stock !== undefined ? item.Stock : 'N/A'; 
                         margeValue.textContent = item.Marge !== undefined ? item.Marge : 'N/A';
                         chronoValue.textContent = item.Chrono !== undefined ? item.Chrono : 'N/A';
                         modeleValue.textContent = item.Modele !== undefined ? item.Modele : 'N/A';
@@ -495,12 +489,11 @@
                         familleValue.textContent = item.Famille !== undefined ? item.Famille : 'N/A';
                         marqueValue.textContent = item.Marque !== undefined ? item.Marque : 'N/A';
 
-                        // Plus de message de succès si des résultats sont trouvés, juste l'affichage des détails
                         noResultsMessage.classList.add('hidden');
                         productDetailsDiv.classList.remove('hidden');
                     } else {
                         showNoResults();
-                        showMessage("Aucun résultat trouvé pour cette recherche.", 'info'); // Message affiché seulement s'il n'y a pas de résultats
+                        showMessage("Aucun résultat trouvé pour cette recherche.", 'info'); 
                     }
                 } else {
                     showMessage(`Erreur HTTP: ${response.status} - ${response.statusText}. Réponse: ${JSON.stringify(data)}`, 'error');
