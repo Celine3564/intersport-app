@@ -301,8 +301,8 @@
                     ZXing.BarcodeFormat.QR_CODE 
                 ];
                 hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, allowedFormats);
-                // AJOUT : Activation de TRY_HARDER pour améliorer la fiabilité du décodage
-                hints.set(ZXing.DecodeHintType.TRY_HARDER, true); 
+                // RETRAIT de TRY_HARDER pour potentiellement améliorer la vitesse, à tester
+                // hints.set(ZXing.DecodeHintType.TRY_HARDER, true); 
                 
                 codeReader = new ZXing.BrowserMultiFormatReader(hints, 100); 
 
@@ -335,10 +335,9 @@
                     video: {
                         deviceId: selectedDeviceId,
                         facingMode: rearCamera ? 'environment' : undefined, 
-                        // Suppression des résolutions idéales strictes pour plus de compatibilité
-                        // width: { ideal: 1280 }, 
-                        // height: { ideal: 720 },
-                        // aspectRatio: { ideal: 1.777 } 
+                        width: { min: 640, ideal: 1280 }, // Tenter une résolution spécifique
+                        height: { min: 480, ideal: 720 },
+                        aspectRatio: { ideal: 1.777 } // 16:9
                     }
                 });
                 scannerVideo.srcObject = currentStream;
