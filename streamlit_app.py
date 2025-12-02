@@ -2,18 +2,18 @@ import pandas as pd
 import gspread
 import streamlit as st
 import time
-import json
+import json # Importation nécessaire pour lire les secrets comme un JSON
 
 # --- 1. CONFIGURATION ET CONSTANTES ---
 
 # --- CONSTANTES GSPREAD (À METTRE À JOUR PAR VOS VALEURS) ---
-
-# Nom du fichier JSON que vous avez téléchargé
-CREDENTIALS_FILE = 'credentials.json' 
-# URL ou Nom de votre feuille Google
-SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk'
-# Nom de l'onglet (feuille) à utiliser (souvent 'Feuille 1')
+# L'ID unique de votre feuille Google (longue chaîne de caractères dans l'URL)
+SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk' 
+# Le nom exact de l'onglet/feuille à l'intérieur du document (ex: 'Feuille 1')
 WORKSHEET_NAME = 'DATA' 
+# IMPORTANT : Cette variable n'est plus utilisée, nous utilisons st.secrets à la place.
+# CREDENTIALS_FILE = 'credentials.json' 
+
 # --- DEFINITION DES COLONNES ---
 
 # Colonnes de l'Excel (utilisées ici pour la vue et le filtrage)
@@ -46,18 +46,19 @@ def load_data_from_gsheet():
     """
     try:
         # --- CONNEXION SÉCURISÉE VIA STREAMLIT SECRETS ---
-        # Récupération des identifiants depuis st.secrets['gspread']
-        secrets = st.secrets['gspread']
         
-        # Le secret private_key peut être tronqué par Streamlit TOML. 
-        # On s'assure qu'il est reformaté pour gspread.
-        # secrets_json = {k: v for k, v in secrets.items()}
-        # gc = gspread.service_account_from_dict(secrets_json)
+        # 1. Récupération des identifiants depuis st.secrets['gspread']
+        secrets_immutable = st.secrets['gspread']
         
-        # SOLUTION PLUS SIMPLE et plus robuste pour gspread service_account_from_dict:
-        # On s'assure que la clé privée est bien reconnue comme une chaîne (si elle était collée avec des guillemets triples)
-        secrets['private_key'] = secrets['private_key'].replace('\\n', '\n')
-        gc = gspread.service_account_from_dict(secrets)
+        # 2. CRÉATION D'UNE COPIE MODIFIABLE (Correction de l'erreur)
+        # Ceci contourne l'erreur "Secrets does not support item assignment".
+        secrets_mutable = dict(secrets_immutable)
+
+        # 3. Réalignement de la clé privée pour gspread
+        secrets_mutable['private_key'] = secrets_mutable['private_key'].replace('\\n', '\n')
+        
+        # 4. Connexion à gspread avec le dictionnaire modifié
+        gc = gspread.service_account_from_dict(secrets_mutable)
 
         sh = gc.open_by_key(SHEET_ID)
         worksheet = sh.worksheet(WORKSHEET_NAME)
@@ -93,72 +94,4 @@ def load_data_from_gsheet():
 
     except KeyError:
         # Cette erreur signifie que la section [gspread] est manquante dans les secrets Streamlit
-        st.error("Erreur de configuration : Le secret Streamlit `gspread` est manquant. Veuillez le configurer dans les paramètres de l'application.")
-        return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Erreur lors de la connexion/lecture de la Google Sheet. Vérifiez l'ID et les permissions du compte de service : {e}")
-        return pd.DataFrame()
-
-
-# --- 3. LOGIQUE ET AFFICHAGE STREAMLIT ---
-
-def main():
-    st.set_page_config(
-        page_title="Suivi des Commandes Ouvertes",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-
-    st.title("📦 Suivi des Commandes en Cours")
-    st.caption("Affiche les commandes NON Clôturées de la Google Sheet, prêtes pour la mise à jour manuelle.")
-
-    # 1. Chargement des données (avec mise en cache)
-    df_data = load_data_from_gsheet()
-
-    if df_data.empty:
-        st.info("Aucune donnée n'a été chargée. Veuillez vérifier la connexion ou l'existence de commandes ouvertes.")
-        return
-
-    # 2. Sélecteurs et Barres de filtre (Sidebar)
-    st.sidebar.header("Filtres")
-    
-    # Filtre sur la colonne Magasin
-    magasins = ['Tous'] + sorted(df_data['Magasin'].unique().tolist())
-    selected_magasin = st.sidebar.selectbox("Filtrer par Magasin:", magasins)
-
-    # Filtre sur la colonne StatutLivraison
-    statuts = ['Tous'] + sorted(df_data['StatutLivraison'].unique().tolist())
-    selected_statut = st.sidebar.selectbox("Filtrer par Statut Livraison:", statuts)
-
-    # 3. Application des filtres
-    df_filtered = df_data.copy()
-
-    if selected_magasin != 'Tous':
-        df_filtered = df_filtered[df_filtered['Magasin'] == selected_magasin]
-
-    if selected_statut != 'Tous':
-        # Assurez-vous que les valeurs sont traitées comme des chaînes pour la comparaison
-        df_filtered = df_filtered[df_filtered['StatutLivraison'].astype(str).str.strip() == selected_statut.strip()]
-        
-    # 4. Affichage des résultats
-    st.subheader(f"Commandes Ouvertes Filtrées ({len(df_filtered)} / {len(df_data)})")
-
-    # Utilisation de st.data_editor pour afficher le DataFrame
-    # Note : La sortie de cette édition sera récupérée dans la prochaine étape pour la sauvegarde.
-    st.data_editor(
-        df_filtered,
-        key="command_editor",
-        height=500,
-        use_container_width=True,
-        hide_index=True,
-        column_order=APP_VIEW_COLUMNS # Assure l'ordre des colonnes
-    )
-
-    # 5. Bouton de Rafraîchissement des données (pour recharger sans attendre le TTL du cache)
-    if st.button("🔄 Rafraîchir les données (Recharger la GSheet)"):
-        # st.cache_data.clear() vide le cache forçant la relecture de la feuille
-        st.cache_data.clear()
-        st.rerun() # Redémarre le script Streamlit pour recharger les données
-
-if __name__ == '__main__':
-    main()
+        st.error("Erreur de configuration : Le secret Streamlit `gspread` est manquant. Veuillez le configurer dans
