@@ -30,9 +30,13 @@ ESSENTIAL_EXCEL_COLUMNS = ['Magasin', 'Fournisseur', 'Mt HT']
 APP_VIEW_COLUMNS = ['NuméroAuto'] + ESSENTIAL_EXCEL_COLUMNS + APP_MANUAL_COLUMNS
 
 KEY_COLUMN = 'NuméroAuto'
+# Colonnes requises pour le fichier d'importation de nouvelles réceptions (minimum)
+IMPORT_REQUIRED_COLUMNS = [KEY_COLUMN, 'Magasin', 'Fournisseur', 'Mt HT'] 
+# Liste de toutes les colonnes de la feuille (y compris Clôturé)
+SHEET_REQUIRED_COLUMNS = [col.strip() for col in APP_VIEW_COLUMNS + ['Clôturé']]
+
 
 # --- 2. FONCTION D'AUTHENTIFICATION (réutilisée pour la lecture et l'écriture) ---
-
 def authenticate_gsheet():
     """Authentifie et retourne l'objet gspread Client."""
     secrets_immutable = st.secrets['gspread']
@@ -65,7 +69,6 @@ def authenticate_gsheet():
     return gspread.service_account_from_dict(json_key_content)
 
 # --- 3. FONCTION DE LECTURE FILTRÉE DES DONNÉES ---
-
 @st.cache_data(ttl=600) # Mise en cache des données pendant 10 minutes
 def load_data_from_gsheet():
     """ 
@@ -81,15 +84,19 @@ def load_data_from_gsheet():
         with st.spinner('Chargement des données de Google Sheets...'):
             # Utilisation de get_all_records pour le DataFrame
             df_full = pd.DataFrame(worksheet.get_all_records())
-            # Utilisation de get_all_values pour les en-têtes (nécessaire pour la fonction de sauvegarde)
+            # Utilisation de get_all_values pour les en-têtes (nécessaire pour la sauvegarde et l'import)
             sheet_values = worksheet.get_all_values()
             column_headers = sheet_values[0] if sheet_values else []
 
         # Nettoyage et typage des colonnes
         df_full.columns = df_full.columns.str.strip()
-        if 'Clôturé' not in df_full.columns:
-             st.error("Colonne 'Clôturé' manquante dans la Google Sheet.")
-             return pd.DataFrame(), [] # Retourne un df vide et des en-têtes vides
+        
+        # Vérification des colonnes essentielles
+        required_cols = [KEY_COLUMN, 'Clôturé'] + ESSENTIAL_EXCEL_COLUMNS
+        for col in required_cols:
+            if col not in df_full.columns:
+                 st.error(f"Colonne essentielle '{col}' manquante dans la Google Sheet.")
+                 return pd.DataFrame(), []
         
         df_full[KEY_COLUMN] = df_full[KEY_COLUMN].astype(str).str.strip()
         df_full['Clôturé'] = df_full['Clôturé'].astype(str).str.strip().str.upper()
@@ -119,8 +126,7 @@ def load_data_from_gsheet():
         st.error(f"Erreur de connexion/lecture. Le problème est lié aux PERMISSIONS de la Google Sheet. Erreur: {e}")
         return pd.DataFrame(), []
 
-# --- 4. FONCTION DE SAUVEGARDE DES DONNÉES ---
-
+# --- 4. FONCTION DE SAUVEGARDE DES DONNÉES EXISTANTES ---
 def save_data_to_gsheet(edited_df, df_filtered_pre_edit, column_headers):
     """
     Sauvegarde les données éditées par l'utilisateur dans la Google Sheet.
@@ -140,7 +146,7 @@ def save_data_to_gsheet(edited_df, df_filtered_pre_edit, column_headers):
         updates = []
         
         # 1. Créer un mappage Colonne -> Index (1-basé)
-        col_to_index = {header: i + 1 for i, header in enumerate(column_headers)}
+        col_to_index = {header.strip(): i + 1 for i, header in enumerate(column_headers)}
         
         # 2. Trouver l'index de la colonne clé dans la feuille (pour la recherche)
         key_col_index = col_to_index.get(KEY_COLUMN)
@@ -187,14 +193,75 @@ def save_data_to_gsheet(edited_df, df_filtered_pre_edit, column_headers):
             
             # 7. Nettoyer le cache et relancer l'application pour afficher les données actualisées
             st.cache_data.clear()
-            # st.rerun() # Pas besoin de relance ici, l'interface le fera après le succès.
+            st.rerun()
 
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde des données : {e}")
 
+# --- 5. FONCTION D'IMPORTATION DE NOUVELLES RÉCEPTIONS ---
+def upload_new_receptions(uploaded_file, column_headers):
+    """
+    Lit un fichier Excel et ajoute les nouvelles réceptions à la Google Sheet.
+    """
+    if uploaded_file is None:
+        return
 
-# --- 5. LOGIQUE ET AFFICHAGE STREAMLIT ---
+    try:
+        # 1. Lecture du fichier Excel
+        df_new = pd.read_excel(uploaded_file, engine='openpyxl')
+        df_new.columns = df_new.columns.str.strip()
+        
+        # 2. Validation des colonnes
+        missing_cols = [col for col in IMPORT_REQUIRED_COLUMNS if col not in df_new.columns]
+        if missing_cols:
+            st.error(f"Le fichier Excel doit contenir les colonnes suivantes : {', '.join(IMPORT_REQUIRED_COLUMNS)}. Colonnes manquantes : {', '.join(missing_cols)}")
+            return
+            
+        # 3. Préparation des données pour l'insertion
+        df_insert = df_new.copy()
+        
+        # S'assurer que les colonnes existent et sont initialisées
+        for col in SHEET_REQUIRED_COLUMNS:
+            if col not in df_insert.columns:
+                if col == 'Clôturé':
+                    df_insert[col] = 'NON' # Nouvelle commande = NON Clôturée
+                else:
+                    # Initialisation des colonnes manuelles à vide
+                    df_insert[col] = '' 
+        
+        # S'assurer que l'ordre des colonnes correspond aux en-têtes de la feuille
+        df_insert = df_insert.reindex(columns=column_headers)
+        
+        # Remplacer les NaN par des chaînes vides pour gspread
+        df_insert = df_insert.fillna('').astype(str)
+        
+        # Conversion en liste de listes (lignes) pour l'insertion
+        data_to_append = df_insert.values.tolist()
+        
+        if not data_to_append:
+            st.warning("Le fichier Excel ne contient aucune donnée à importer.")
+            return
 
+        # 4. Insertion dans Google Sheet
+        gc = authenticate_gsheet()
+        sh = gc.open_by_key(SHEET_ID)
+        worksheet = sh.worksheet(WORKSHEET_NAME)
+        
+        # Utilisation de append_rows pour ajouter à la fin
+        worksheet.append_rows(data_to_append, value_input_option='USER_ENTERED')
+        
+        st.success(f"✅ {len(data_to_append)} nouvelle(s) réception(s) importée(s) avec succès dans la Google Sheet!")
+        
+        # Nettoyer le cache et relancer pour afficher les nouvelles données
+        st.cache_data.clear()
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"Erreur lors de l'importation du fichier Excel : {e}")
+        st.info("Veuillez vérifier que le fichier est au format Excel (.xlsx) et que toutes les colonnes requises sont présentes.")
+
+
+# --- 6. LOGIQUE ET AFFICHAGE STREAMLIT ---
 def main():
     st.set_page_config(
         page_title="Suivi des Commandes Ouvertes",
@@ -206,16 +273,21 @@ def main():
     st.caption("Affiche les commandes NON Clôturées de la Google Sheet, prêtes pour la mise à jour manuelle.")
 
     # 1. Chargement des données (avec mise en cache)
-    # On récupère le DataFrame et les en-têtes de colonnes (pour la sauvegarde)
     df_data, column_headers = load_data_from_gsheet()
     
-    # Stockage de l'état des en-têtes pour la sauvegarde
     st.session_state['column_headers'] = column_headers
 
     if df_data.empty:
         st.info("Aucune donnée n'a été chargée. Veuillez vérifier la connexion ou l'existence de commandes ouvertes.")
-        return
-
+        # Afficher la section d'importation même si le df_data est vide
+    
+    # --- SECTION IMPORTATION NOUVELLES RÉCEPTIONS (Feature 2) ---
+    with st.sidebar.expander("Importer de Nouvelles Réceptions", expanded=False):
+        st.caption("Fichier requis : Excel (.xlsx) avec au moins les colonnes 'NuméroAuto', 'Magasin', 'Fournisseur', 'Mt HT'.")
+        uploaded_file = st.file_uploader("Sélectionner un fichier Excel", type=['xlsx'])
+        if uploaded_file is not None and st.button("🚀 Importer les données"):
+            upload_new_receptions(uploaded_file, column_headers)
+            
     # 2. Sélecteurs et Barres de filtre (Sidebar)
     st.sidebar.header("Filtres")
     
@@ -236,12 +308,19 @@ def main():
     if selected_statut != 'Tous':
         df_filtered = df_filtered[df_filtered['StatutLivraison'].astype(str).str.strip() == selected_statut.strip()]
         
-    # Stockage de la version filtrée AVANT édition pour mapping dans la fonction de sauvegarde
     st.session_state['df_filtered_pre_edit'] = df_filtered.copy()
 
     # 4. Affichage des résultats
     st.subheader(f"Commandes Ouvertes Filtrées ({len(df_filtered)} / {len(df_data)})")
 
+    # Configuration des colonnes (pour rendre les colonnes Excel non éditables)
+    column_configs = {
+        col: st.column_config.Column(
+            col,
+            disabled=(col not in APP_MANUAL_COLUMNS) # Désactive l'édition si ce n'est pas une colonne manuelle
+        ) for col in APP_VIEW_COLUMNS
+    }
+    
     # Éditeur de données
     edited_df = st.data_editor(
         df_filtered,
@@ -249,10 +328,43 @@ def main():
         height=500,
         use_container_width=True,
         hide_index=True,
-        column_order=APP_VIEW_COLUMNS
+        column_order=APP_VIEW_COLUMNS,
+        column_config=column_configs,
+        # Ajout de la sélection de ligne pour la fonctionnalité de détails
+        on_select="rerun" # On relance l'app pour afficher les détails immédiatement
     )
 
-    # 5. Bouton de Rafraîchissement et Sauvegarde
+    # 5. Affichage des détails de la ligne sélectionnée (Feature 1)
+    if df_filtered.empty:
+        # Ne pas essayer de lire la sélection si le DF est vide
+        pass
+    elif 'selection' in st.session_state["command_editor"] and st.session_state["command_editor"]["selection"]["rows"]:
+        
+        selected_index = st.session_state["command_editor"]["selection"]["rows"][0]
+        selected_row_data = df_filtered.iloc[selected_index]
+
+        st.divider()
+        st.markdown("### 🔎 Détails de la Commande Sélectionnée")
+        
+        # Utilisation de colonnes pour une meilleure mise en page
+        detail_cols = st.columns(4)
+        col_index = 0
+        
+        # Affichage des informations
+        for col_name in APP_VIEW_COLUMNS:
+            value = selected_row_data.get(col_name, "N/A")
+            
+            if col_name in ['Commentaire_Livraison', 'Commentaire_litige']:
+                # Utilisation de st.markdown pour les champs de commentaires longs
+                detail_cols[col_index % 4].markdown(f"**{col_name} :** {value if value else 'Non spécifié'}")
+            else:
+                # Utilisation de st.metric pour les autres champs (plus compact)
+                detail_cols[col_index % 4].metric(col_name, value if value else "Non spécifié")
+            col_index += 1
+        st.divider()
+
+
+    # 7. Bouton de Rafraîchissement et Sauvegarde
     col1, col2 = st.columns([1, 4])
     with col1:
         if st.button("🔄 Rafraîchir les données"):
@@ -267,9 +379,7 @@ def main():
                 st.session_state['df_filtered_pre_edit'], 
                 st.session_state['column_headers']
             )
-            # Rerun après la sauvegarde pour afficher les nouvelles données (cache vidé)
-            st.rerun()
-
+            # Rerun est déjà dans save_data_to_gsheet
 
 if __name__ == '__main__':
     main()
