@@ -2,6 +2,7 @@ import pandas as pd
 import gspread
 import streamlit as st
 import time
+import json
 
 # --- 1. CONFIGURATION ET CONSTANTES ---
 
@@ -35,7 +36,7 @@ APP_VIEW_COLUMNS = ['NuméroAuto'] + ESSENTIAL_EXCEL_COLUMNS + APP_MANUAL_COLUMN
 
 KEY_COLUMN = 'NuméroAuto'
 
-# --- 2. FONCTION DE LECTURE FILTRÉE DES DONNÉES (Adaptée du Canvas précédent) ---
+# --- 2. FONCTION DE LECTURE FILTRÉE DES DONNÉES ---
 
 @st.cache_data(ttl=600) # Mise en cache des données pendant 10 minutes pour éviter des lectures répétées
 def load_data_from_gsheet():
@@ -44,14 +45,27 @@ def load_data_from_gsheet():
     et le filtre sur les colonnes (vue application).
     """
     try:
-        # Initialisation de gspread
-        gc = gspread.service_account(filename=CREDENTIALS_FILE)
+        # --- CONNEXION SÉCURISÉE VIA STREAMLIT SECRETS ---
+        # Récupération des identifiants depuis st.secrets['gspread']
+        secrets = st.secrets['gspread']
+        
+        # Le secret private_key peut être tronqué par Streamlit TOML. 
+        # On s'assure qu'il est reformaté pour gspread.
+        # secrets_json = {k: v for k, v in secrets.items()}
+        # gc = gspread.service_account_from_dict(secrets_json)
+        
+        # SOLUTION PLUS SIMPLE et plus robuste pour gspread service_account_from_dict:
+        # On s'assure que la clé privée est bien reconnue comme une chaîne (si elle était collée avec des guillemets triples)
+        secrets['private_key'] = secrets['private_key'].replace('\\n', '\n')
+        gc = gspread.service_account_from_dict(secrets)
+
         sh = gc.open_by_key(SHEET_ID)
         worksheet = sh.worksheet(WORKSHEET_NAME)
         
         # 1. Lecture de toutes les données fusionnées
         # st.spinner() affiche un message de chargement pendant l'exécution
         with st.spinner('Chargement des données de Google Sheets...'):
+            # Utilisation de get_all_records pour lire les données sous forme de dictionnaire (plus robuste)
             df_full = pd.DataFrame(worksheet.get_all_records())
 
         # S'assurer que les en-têtes sont nettoyés
@@ -77,11 +91,12 @@ def load_data_from_gsheet():
         st.success(f"Données chargées : {len(df_app_view)} commandes ouvertes prêtes.")
         return df_app_view
 
-    except FileNotFoundError:
-        st.error(f"Erreur : Le fichier de credentials ({CREDENTIALS_FILE}) est introuvable. Veuillez vérifier le chemin.")
+    except KeyError:
+        # Cette erreur signifie que la section [gspread] est manquante dans les secrets Streamlit
+        st.error("Erreur de configuration : Le secret Streamlit `gspread` est manquant. Veuillez le configurer dans les paramètres de l'application.")
         return pd.DataFrame()
     except Exception as e:
-        st.error(f"Erreur lors de la connexion/lecture de la Google Sheet. Vérifiez l'ID et les permissions : {e}")
+        st.error(f"Erreur lors de la connexion/lecture de la Google Sheet. Vérifiez l'ID et les permissions du compte de service : {e}")
         return pd.DataFrame()
 
 
@@ -122,14 +137,14 @@ def main():
         df_filtered = df_filtered[df_filtered['Magasin'] == selected_magasin]
 
     if selected_statut != 'Tous':
-        df_filtered = df_filtered[df_filtered['StatutLivraison'] == selected_statut]
+        # Assurez-vous que les valeurs sont traitées comme des chaînes pour la comparaison
+        df_filtered = df_filtered[df_filtered['StatutLivraison'].astype(str).str.strip() == selected_statut.strip()]
         
     # 4. Affichage des résultats
     st.subheader(f"Commandes Ouvertes Filtrées ({len(df_filtered)} / {len(df_data)})")
 
     # Utilisation de st.data_editor pour afficher le DataFrame
-    # Note : Le mode "data_editor" permet l'édition, mais nous implémenterons 
-    # la sauvegarde réelle dans l'étape suivante.
+    # Note : La sortie de cette édition sera récupérée dans la prochaine étape pour la sauvegarde.
     st.data_editor(
         df_filtered,
         key="command_editor",
