@@ -51,16 +51,17 @@ def load_data_from_gsheet():
         secrets_immutable = st.secrets['gspread']
         
         # 2. CRÉATION D'UNE COPIE MODIFIABLE
-        # (Nécessaire car st.secrets est en lecture seule)
-        secrets_mutable = dict(secrets_immutable)
+        # On utilise 'creds' pour les credentials
+        creds = dict(secrets_immutable)
 
         # 3. Réalignement de la clé privée pour gspread
-        # On remplace SYSTEMATIQUEMENT les '\n' littéraux (souvent présents après copie/colle d'un JSON) 
-        # par de vrais sauts de ligne. Ceci est plus robuste que la vérification 'startswith'.
-        secrets_mutable['private_key'] = secrets_mutable['private_key'].replace('\\n', '\n')
+        # On s'assure que la valeur est traitée comme une chaîne standard (str())
+        # et on remplace SYSTEMATIQUEMENT les '\n' littéraux.
+        private_key_value = str(creds['private_key'])
+        creds['private_key'] = private_key_value.replace('\\n', '\n')
         
         # 4. Connexion à gspread avec le dictionnaire modifié
-        gc = gspread.service_account_from_dict(secrets_mutable)
+        gc = gspread.service_account_from_dict(creds)
 
         sh = gc.open_by_key(SHEET_ID)
         worksheet = sh.worksheet(WORKSHEET_NAME)
