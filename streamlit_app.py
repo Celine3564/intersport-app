@@ -50,12 +50,16 @@ def load_data_from_gsheet():
         # 1. Récupération des identifiants depuis st.secrets['gspread']
         secrets_immutable = st.secrets['gspread']
         
-        # 2. CRÉATION D'UNE COPIE MODIFIABLE (Correction de l'erreur)
-        # Ceci contourne l'erreur "Secrets does not support item assignment".
+        # 2. CRÉATION D'UNE COPIE MODIFIABLE
         secrets_mutable = dict(secrets_immutable)
 
         # 3. Réalignement de la clé privée pour gspread
-        secrets_mutable['private_key'] = secrets_mutable['private_key'].replace('\\n', '\n')
+        # La clé privée DOIT contenir de vrais sauts de ligne (\n).
+        # On utilise replace pour garantir qu'ils sont bien présents.
+        private_key = secrets_mutable['private_key']
+        if not private_key.startswith('-----BEGIN PRIVATE KEY-----'):
+            # Si le format est JSON encodé avec des \n litéraux (cas le plus courant)
+            secrets_mutable['private_key'] = private_key.replace('\\n', '\n')
         
         # 4. Connexion à gspread avec le dictionnaire modifié
         gc = gspread.service_account_from_dict(secrets_mutable)
