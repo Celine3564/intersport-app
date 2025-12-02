@@ -54,12 +54,29 @@ def load_data_from_gsheet():
         # On utilise 'creds' pour les credentials
         creds = dict(secrets_immutable)
 
+        # -----------------------------------
+        # --- BLOC DE DÉBOGAGE CRITIQUE ---
+        # -----------------------------------
+        print("DEBUG: Secrets gspread lus avec succès.")
+        
+        private_key_value = creds.get('private_key', 'CLE_MANQUANTE')
+        
+        if private_key_value == 'CLE_MANQUANTE':
+            st.error("Erreur critique : La clé 'private_key' est absente de la section [gspread] des secrets.")
+            return pd.DataFrame()
+            
+        print(f"DEBUG: Type de private_key AVANT conversion : {type(private_key_value)}")
+        
         # 3. Réalignement de la clé privée pour gspread
         # On s'assure que la valeur est traitée comme une chaîne standard (str())
         # et on remplace SYSTEMATIQUEMENT les '\n' littéraux.
-        private_key_value = str(creds['private_key'])
+        # Nous faisons un .strip() de plus pour éliminer tout espace blanc invisible au début/fin
+        private_key_value = str(private_key_value).strip()
         creds['private_key'] = private_key_value.replace('\\n', '\n')
         
+        print(f"DEBUG: Type de private_key APRÈS conversion : {type(creds['private_key'])}")
+        # -----------------------------------
+
         # 4. Connexion à gspread avec le dictionnaire modifié
         gc = gspread.service_account_from_dict(creds)
 
