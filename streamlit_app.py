@@ -341,27 +341,30 @@ def main():
     elif 'selection' in st.session_state["command_editor"] and st.session_state["command_editor"]["selection"]["rows"]:
         
         selected_index = st.session_state["command_editor"]["selection"]["rows"][0]
-        selected_row_data = df_filtered.iloc[selected_index]
+        
+        # VÉRIFICATION DE SÉCURITÉ : Assure que l'index sélectionné est dans les limites du DataFrame actuel
+        if selected_index < len(df_filtered):
+            selected_row_data = df_filtered.iloc[selected_index]
 
-        st.divider()
-        st.markdown("### 🔎 Détails de la Commande Sélectionnée")
-        
-        # Utilisation de colonnes pour une meilleure mise en page
-        detail_cols = st.columns(4)
-        col_index = 0
-        
-        # Affichage des informations
-        for col_name in APP_VIEW_COLUMNS:
-            value = selected_row_data.get(col_name, "N/A")
+            st.divider()
+            st.markdown("### 🔎 Détails de la Commande Sélectionnée")
             
-            if col_name in ['Commentaire_Livraison', 'Commentaire_litige']:
-                # Utilisation de st.markdown pour les champs de commentaires longs
-                detail_cols[col_index % 4].markdown(f"**{col_name} :** {value if value else 'Non spécifié'}")
-            else:
-                # Utilisation de st.metric pour les autres champs (plus compact)
-                detail_cols[col_index % 4].metric(col_name, value if value else "Non spécifié")
-            col_index += 1
-        st.divider()
+            # Utilisation de colonnes pour une meilleure mise en page
+            detail_cols = st.columns(4)
+            col_index = 0
+            
+            # Affichage des informations
+            for col_name in APP_VIEW_COLUMNS:
+                value = selected_row_data.get(col_name, "N/A")
+                
+                if col_name in ['Commentaire_Livraison', 'Commentaire_litige']:
+                    # Utilisation de st.markdown pour les champs de commentaires longs
+                    detail_cols[col_index % 4].markdown(f"**{col_name} :** {value if value else 'Non spécifié'}")
+                else:
+                    # Utilisation de st.metric pour les autres champs (plus compact)
+                    detail_cols[col_index % 4].metric(col_name, value if value else "Non spécifié")
+                col_index += 1
+            st.divider()
 
 
     # 7. Bouton de Rafraîchissement et Sauvegarde
