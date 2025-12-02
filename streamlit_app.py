@@ -2,6 +2,7 @@ import pandas as pd
 import gspread
 import streamlit as st
 import time
+import io 
 
 # --- 1. CONFIGURATION ET CONSTANTES ---
 
@@ -30,7 +31,40 @@ APP_VIEW_COLUMNS = ['NuméroAuto'] + ESSENTIAL_EXCEL_COLUMNS + APP_MANUAL_COLUMN
 
 KEY_COLUMN = 'NuméroAuto'
 
-# --- 2. FONCTION DE LECTURE FILTRÉE DES DONNÉES ---
+# --- 2. FONCTION D'AUTHENTIFICATION (réutilisée pour la lecture et l'écriture) ---
+
+def authenticate_gsheet():
+    """Authentifie et retourne l'objet gspread Client."""
+    secrets_immutable = st.secrets['gspread']
+    creds_for_auth = dict(secrets_immutable)
+    
+    # Champs requis pour l'authentification JWT
+    REQUIRED_KEYS = ['private_key', 'client_email', 'project_id', 'type']
+    for key in REQUIRED_KEYS:
+        if key not in creds_for_auth or not creds_for_auth[key]:
+            raise ValueError(f"Erreur de configuration : Le secret '{key}' est manquant ou vide.")
+
+    # Nettoyage de la clé privée
+    private_key_value = str(creds_for_auth['private_key']).strip()
+    cleaned_private_key = private_key_value.replace('\\n', '\n')
+    
+    # Création du dictionnaire final pour l'authentification
+    json_key_content = {
+        "type": creds_for_auth['type'],
+        "project_id": creds_for_auth['project_id'],
+        "private_key_id": creds_for_auth.get('private_key_id', ''),
+        "private_key": cleaned_private_key,
+        "client_email": creds_for_auth['client_email'],
+        "client_id": creds_for_auth.get('client_id', ''),
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": creds_for_auth.get('client_x509_cert_url', '')
+    }
+    
+    return gspread.service_account_from_dict(json_key_content)
+
+# --- 3. FONCTION DE LECTURE FILTRÉE DES DONNÉES ---
 
 @st.cache_data(ttl=600) # Mise en cache des données pendant 10 minutes
 def load_data_from_gsheet():
@@ -38,34 +72,24 @@ def load_data_from_gsheet():
     Lit la Google Sheet, filtre les commandes ouvertes et les colonnes de la vue application.
     """
     try:
-        # --- CONNEXION SÉCURISÉE VIA STREAMLIT SECRETS ---
-        secrets_immutable = st.secrets['gspread']
-        creds = dict(secrets_immutable)
-
-        # Nettoyage de la clé privée pour s'assurer qu'elle est au bon format str
-        private_key_value = creds.get('private_key', 'CLE_MANQUANTE')
-        if private_key_value == 'CLE_MANQUANTE':
-            st.error("Erreur critique : La clé 'private_key' est absente de la section [gspread] des secrets.")
-            return pd.DataFrame()
+        gc = authenticate_gsheet()
         
-        # Conversion en str, suppression des espaces, et remplacement des '\n' littéraux
-        private_key_value = str(private_key_value).strip()
-        creds['private_key'] = private_key_value.replace('\\n', '\n')
-        
-        # Connexion à gspread
-        gc = gspread.service_account_from_dict(creds)
         sh = gc.open_by_key(SHEET_ID)
         worksheet = sh.worksheet(WORKSHEET_NAME)
         
         # Lecture de toutes les données
         with st.spinner('Chargement des données de Google Sheets...'):
+            # Utilisation de get_all_records pour le DataFrame
             df_full = pd.DataFrame(worksheet.get_all_records())
+            # Utilisation de get_all_values pour les en-têtes (nécessaire pour la fonction de sauvegarde)
+            sheet_values = worksheet.get_all_values()
+            column_headers = sheet_values[0] if sheet_values else []
 
         # Nettoyage et typage des colonnes
         df_full.columns = df_full.columns.str.strip()
         if 'Clôturé' not in df_full.columns:
              st.error("Colonne 'Clôturé' manquante dans la Google Sheet.")
-             return pd.DataFrame()
+             return pd.DataFrame(), [] # Retourne un df vide et des en-têtes vides
         
         df_full[KEY_COLUMN] = df_full[KEY_COLUMN].astype(str).str.strip()
         df_full['Clôturé'] = df_full['Clôturé'].astype(str).str.strip().str.upper()
@@ -79,28 +103,97 @@ def load_data_from_gsheet():
         df_app_view = df_app_view.sort_values(by=KEY_COLUMN, ascending=True).reset_index(drop=True)
         
         st.success(f"Données chargées : {len(df_app_view)} commandes ouvertes prêtes.")
-        return df_app_view
+        # Retourne le DataFrame et les en-têtes du sheet pour la sauvegarde
+        return df_app_view, column_headers
 
+    except ValueError as e:
+        # Erreur spécifique de configuration
+        st.error(f"Erreur de configuration : {e}")
+        return pd.DataFrame(), []
     except KeyError:
+        # Erreur si la section [gspread] manque
         st.error("Erreur de configuration : Le secret Streamlit `gspread` est manquant. Veuillez le configurer dans les paramètres de l'application.")
-        return pd.DataFrame()
+        return pd.DataFrame(), []
     except Exception as e:
-        st.error(f"Erreur lors de la connexion/lecture de la Google Sheet. Vérifiez l'ID et les permissions du compte de service : {e}")
-        return pd.DataFrame()
+        # Erreur finale de connexion/permission
+        st.error(f"Erreur de connexion/lecture. Le problème est lié aux PERMISSIONS de la Google Sheet. Erreur: {e}")
+        return pd.DataFrame(), []
 
-# --- 3. FONCTION DE SAUVEGARDE DES DONNÉES (À IMPLÉMENTER PLUS TARD) ---
+# --- 4. FONCTION DE SAUVEGARDE DES DONNÉES ---
 
-def save_data_to_gsheet(df_to_save):
+def save_data_to_gsheet(edited_df, df_filtered_pre_edit, column_headers):
     """
     Sauvegarde les données éditées par l'utilisateur dans la Google Sheet.
-    (Implémentation à venir lorsque la connexion sera stable)
     """
-    st.info("Fonction de sauvegarde temporairement désactivée en attendant la résolution de la connexion.")
-    # Le code de sauvegarde sera inséré ici.
-    pass
+    try:
+        gc = authenticate_gsheet()
+        sh = gc.open_by_key(SHEET_ID)
+        worksheet = sh.worksheet(WORKSHEET_NAME)
+        
+        # Récupération des changements de l'éditeur Streamlit
+        edited_rows = st.session_state["command_editor"]["edited_rows"]
+        
+        if not edited_rows:
+            st.warning("Aucune modification détectée dans le tableau.")
+            return
+
+        updates = []
+        
+        # 1. Créer un mappage Colonne -> Index (1-basé)
+        col_to_index = {header: i + 1 for i, header in enumerate(column_headers)}
+        
+        # 2. Trouver l'index de la colonne clé dans la feuille (pour la recherche)
+        key_col_index = col_to_index.get(KEY_COLUMN)
+        if not key_col_index:
+            st.error(f"Colonne clé '{KEY_COLUMN}' introuvable dans la feuille Google. Sauvegarde annulée.")
+            return
+
+        # 3. Traiter chaque ligne modifiée
+        for filtered_index, changes in edited_rows.items():
+            
+            # Récupérer la valeur unique de la clé (NuméroAuto) dans le tableau pré-édité
+            key_value = df_filtered_pre_edit.iloc[filtered_index][KEY_COLUMN]
+            
+            # 4. Trouver la ligne physique dans la Google Sheet
+            # La recherche se fait uniquement dans la colonne KEY_COLUMN
+            cell = worksheet.find(str(key_value), in_column=key_col_index)
+            
+            if cell is None:
+                st.error(f"Clé '{key_value}' introuvable dans la Google Sheet. Ligne non sauvegardée.")
+                continue
+                
+            physical_row = cell.row
+            
+            # 5. Mettre à jour chaque colonne modifiée pour cette ligne
+            for col_name, new_value in changes.items():
+                
+                # Récupérer l'index de la colonne physique
+                col_index = col_to_index.get(col_name)
+                
+                if col_index is None:
+                    st.warning(f"La colonne '{col_name}' est gérée par Streamlit mais introuvable dans la Google Sheet. Ignorée.")
+                    continue
+                    
+                # Ajout de l'instruction de mise à jour à la liste
+                updates.append({
+                    'range': gspread.utils.rowcol_to_a1(physical_row, col_index),
+                    'values': [[str(new_value)]] # Les valeurs doivent être dans un format [[value]]
+                })
+
+        # 6. Exécuter toutes les mises à jour en une seule fois (Batch Update)
+        if updates:
+            worksheet.batch_update(updates)
+            st.success(f"💾 {len(edited_rows)} ligne(s) mise(s) à jour avec succès dans Google Sheet!")
+            
+            # 7. Nettoyer le cache et relancer l'application pour afficher les données actualisées
+            st.cache_data.clear()
+            # st.rerun() # Pas besoin de relance ici, l'interface le fera après le succès.
+
+    except Exception as e:
+        st.error(f"Erreur lors de la sauvegarde des données : {e}")
 
 
-# --- 4. LOGIQUE ET AFFICHAGE STREAMLIT ---
+# --- 5. LOGIQUE ET AFFICHAGE STREAMLIT ---
 
 def main():
     st.set_page_config(
@@ -113,7 +206,11 @@ def main():
     st.caption("Affiche les commandes NON Clôturées de la Google Sheet, prêtes pour la mise à jour manuelle.")
 
     # 1. Chargement des données (avec mise en cache)
-    df_data = load_data_from_gsheet()
+    # On récupère le DataFrame et les en-têtes de colonnes (pour la sauvegarde)
+    df_data, column_headers = load_data_from_gsheet()
+    
+    # Stockage de l'état des en-têtes pour la sauvegarde
+    st.session_state['column_headers'] = column_headers
 
     if df_data.empty:
         st.info("Aucune donnée n'a été chargée. Veuillez vérifier la connexion ou l'existence de commandes ouvertes.")
@@ -139,6 +236,9 @@ def main():
     if selected_statut != 'Tous':
         df_filtered = df_filtered[df_filtered['StatutLivraison'].astype(str).str.strip() == selected_statut.strip()]
         
+    # Stockage de la version filtrée AVANT édition pour mapping dans la fonction de sauvegarde
+    st.session_state['df_filtered_pre_edit'] = df_filtered.copy()
+
     # 4. Affichage des résultats
     st.subheader(f"Commandes Ouvertes Filtrées ({len(df_filtered)} / {len(df_data)})")
 
@@ -152,7 +252,7 @@ def main():
         column_order=APP_VIEW_COLUMNS
     )
 
-    # 5. Bouton de Rafraîchissement des données (pour recharger sans attendre le TTL du cache)
+    # 5. Bouton de Rafraîchissement et Sauvegarde
     col1, col2 = st.columns([1, 4])
     with col1:
         if st.button("🔄 Rafraîchir les données"):
@@ -160,9 +260,15 @@ def main():
             st.rerun() 
             
     with col2:
-        # Bouton de sauvegarde (temporairement inactif)
         if st.button("💾 Enregistrer les modifications"):
-            save_data_to_gsheet(edited_df)
+            # Passer le DataFrame édité, la version d'avant édition pour le mapping, et les en-têtes
+            save_data_to_gsheet(
+                edited_df, 
+                st.session_state['df_filtered_pre_edit'], 
+                st.session_state['column_headers']
+            )
+            # Rerun après la sauvegarde pour afficher les nouvelles données (cache vidé)
+            st.rerun()
 
 
 if __name__ == '__main__':
