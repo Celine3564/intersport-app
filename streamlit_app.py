@@ -165,10 +165,11 @@ def save_data_to_gsheet(edited_df, df_filtered_pre_edit, column_headers):
             return
 
         # 3. Traiter chaque ligne modifiée
+        # df_filtered_pre_edit est le DF qui était affiché dans l'éditeur
         for filtered_index, changes in edited_rows.items():
             
             # Récupérer la valeur unique de la clé (NuméroAuto) dans le tableau pré-édité
-            # C'est la ligne correcte car elle est basée sur le DF affiché juste avant l'édition.
+            # L'index filtered_index est l'index de la ligne dans df_filtered_pre_edit
             key_value = df_filtered_pre_edit.iloc[filtered_index][KEY_COLUMN]
             
             # 4. Trouver la ligne physique dans la Google Sheet
@@ -298,6 +299,9 @@ def main():
 
     if df_data.empty:
         st.info("Aucune donnée n'a été chargée. Veuillez vérifier la connexion ou l'existence de commandes ouvertes.")
+        # S'assurer que la sidebar reste visible pour l'import, même si df_data est vide
+        if 'uploader_key' not in st.session_state:
+             st.session_state.uploader_key = 0
     
     # --- SECTION IMPORTATION NOUVELLES RÉCEPTIONS (Feature 2) ---
     with st.sidebar.expander("Importer de Nouvelles Réceptions", expanded=False):
@@ -311,26 +315,37 @@ def main():
             upload_new_receptions(uploaded_file, column_headers)
             
     # 2. Sélecteurs et Barres de filtre (Sidebar)
+    # Les filtres sont affichés même si df_data est vide pour le style, mais ne sont pas fonctionnels
     st.sidebar.header("Filtres")
     
-    # Filtre sur la colonne Magasin
-    magasins = ['Tous'] + sorted(df_data['Magasin'].unique().tolist())
-    selected_magasin = st.sidebar.selectbox("Filtrer par Magasin:", magasins)
+    # Gestion des options de filtre si les données sont chargées
+    if not df_data.empty:
+        # Filtre sur la colonne Magasin
+        magasins = ['Tous'] + sorted(df_data['Magasin'].unique().tolist())
+        selected_magasin = st.sidebar.selectbox("Filtrer par Magasin:", magasins)
 
-    # Filtre sur la colonne StatutLivraison
-    statuts = ['Tous'] + sorted(df_data['StatutLivraison'].unique().tolist())
-    selected_statut = st.sidebar.selectbox("Filtrer par Statut Livraison:", statuts)
+        # Filtre sur la colonne StatutLivraison
+        statuts = ['Tous'] + sorted(df_data['StatutLivraison'].unique().tolist())
+        selected_statut = st.sidebar.selectbox("Filtrer par Statut Livraison:", statuts)
+    
+        # 3. Application des filtres
+        df_filtered = df_data.copy()
 
-    # 3. Application des filtres
-    df_filtered = df_data.copy()
+        if selected_magasin != 'Tous':
+            df_filtered = df_filtered[df_filtered['Magasin'] == selected_magasin]
 
-    if selected_magasin != 'Tous':
-        df_filtered = df_filtered[df_filtered['Magasin'] == selected_magasin]
-
-    if selected_statut != 'Tous':
-        df_filtered = df_filtered[df_filtered['StatutLivraison'].astype(str).str.strip() == selected_statut.strip()]
+        if selected_statut != 'Tous':
+            # Utilisation de .astype(str) pour la robustesse des données
+            df_filtered = df_filtered[df_filtered['StatutLivraison'].astype(str).str.strip() == selected_statut.strip()]
+            
+        st.session_state['df_filtered_pre_edit'] = df_filtered.copy() # Sauvegarde la version filtrée (pour la sauvegarde)
         
-    st.session_state['df_filtered_pre_edit'] = df_filtered.copy()
+    else:
+        # Si df_data est vide, initialiser df_filtered à vide pour éviter des erreurs
+        df_filtered = pd.DataFrame() 
+        st.session_state['df_filtered_pre_edit'] = pd.DataFrame()
+        st.sidebar.selectbox("Filtrer par Magasin:", ['Tous']) # Affiche des placeholders vides
+        st.sidebar.selectbox("Filtrer par Statut Livraison:", ['Tous'])
 
     # 4. Affichage des résultats
     st.subheader(f"Commandes Ouvertes Filtrées ({len(df_filtered)} / {len(df_data)})")
@@ -343,33 +358,31 @@ def main():
         ) for col in APP_VIEW_COLUMNS
     }
     
- # Éditeur de données
-    # AJOUT DE LA CLÉ pour que la sélection fonctionne.
-    # L'événement on_select="rerun" a été omis comme demandé.
+    # Éditeur de données
+    # CORRECTION: Utiliser df_filtered ici pour que le tableau soit bien filtré visuellement
     edited_df = st.data_editor(
-        df_data,
-        key="command_editor", # Clé ajoutée ici
+        df_filtered, # <-- CORRECTION APPLIQUÉE
+        key="command_editor",
         height=500,
         use_container_width=True,
         hide_index=True,
         column_order=APP_VIEW_COLUMNS,
         column_config=column_configs,
-        # IMPORTANT : L'édition est permise mais les données éditées NE SONT PAS utilisées ni sauvegardées.
     )
 
-    # --- 3. Affichage des détails de la ligne sélectionnée ---
+    # --- 5. Affichage des détails de la ligne sélectionnée ---
     
     # Vérifie si la sélection est présente et non vide
     selection_state = st.session_state.get("command_editor", {}).get("selection", {})
     selected_rows_indices = selection_state.get("rows", [])
     
-    if selected_rows_indices:
-        # Récupère l'index de la ligne sélectionnée dans le DF affiché
+    if selected_rows_indices and not df_filtered.empty: # Ajout d'une vérification de df_filtered
+        # selected_index est l'index de la ligne dans le DataFrame *filtré* (df_filtered)
         selected_index = selected_rows_indices[0]
         
         try:
-            # Accès direct à la ligne en utilisant l'index sur df_data
-            selected_row_data = df_data.iloc[selected_index]
+            # CORRECTION: Accès à la ligne en utilisant l'index sur df_filtered
+            selected_row_data = df_filtered.iloc[selected_index] # <-- CORRECTION APPLIQUÉE
             
             st.divider()
             st.markdown("### 🔎 Détails de la Commande Sélectionnée")
@@ -392,14 +405,13 @@ def main():
             st.divider()
 
         except IndexError:
-            # Gère le cas où l'index n'existe plus (ex: après un rafraîchissement)
-            st.info("Détails non affichés : La sélection précédente a été perdue.")
+            # Si l'IndexError est levée (problème d'index/filtre), on gère silencieusement.
+            st.info("Détails non affichés : La sélection précédente a été perdue suite à l'application du filtre ou au rechargement des données.")
         except Exception as e:
             st.error(f"Erreur inattendue lors de l'affichage des détails : {e}")
 
 
-
-    # 7. Bouton de Rafraîchissement et Sauvegarde
+    # 6. Bouton de Rafraîchissement et Sauvegarde
     col1, col2 = st.columns([1, 4])
     with col1:
         if st.button("🔄 Rafraîchir les données"):
@@ -407,14 +419,17 @@ def main():
             st.rerun() 
             
     with col2:
-        if st.button("💾 Enregistrer les modifications"):
-            # Passer le DataFrame édité, la version d'avant édition pour le mapping, et les en-têtes
-            save_data_to_gsheet(
-                edited_df, 
-                st.session_state['df_filtered_pre_edit'], 
-                st.session_state['column_headers']
-            )
-            # Rerun est déjà dans save_data_to_gsheet
+        # La sauvegarde est conditionnée à l'existence de données filtrées pré-édition
+        if 'df_filtered_pre_edit' in st.session_state and not st.session_state['df_filtered_pre_edit'].empty:
+            if st.button("💾 Enregistrer les modifications"):
+                # Passer le DataFrame édité, la version d'avant édition pour le mapping, et les en-têtes
+                save_data_to_gsheet(
+                    edited_df, 
+                    st.session_state['df_filtered_pre_edit'], 
+                    st.session_state['column_headers']
+                )
+        elif st.button("💾 Enregistrer les modifications"):
+            st.warning("Aucune donnée à sauvegarder : le tableau est vide ou non chargé.")
 
 if __name__ == '__main__':
     main()
