@@ -9,7 +9,7 @@ from datetime import datetime
 # --- CONSTANTES GSPREAD ---
 SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk' 
 WORKSHEET_NAME = 'DATA' 
-PENDING_BL_WORKSHEET_NAME = 'BL_EN_ATTENTE' # Nouvelle constante pour le suivi quotidien
+PENDING_BL_WORKSHEET_NAME = 'BL_EN_ATTENTE' 
 
 # --- DÉFINITION DES COLONNES PAR ÉTAPE ---
 
@@ -23,14 +23,14 @@ PENDING_BL_COLUMNS = ['Fournisseur', 'NuméroBL', 'DateReceptionPhysique', 'Stat
 # Étape 1: Import ou Saisie Réception (Colonnes pour l'affichage de cette étape)
 STEP_1_COLUMNS = ESSENTIAL_EXCEL_COLUMNS + ['PDC', 'AcheteurPDC']
 
-# Étape 2: Saisie Info Transport (Colonnes à éditer)
+# Étape 2: Saisie Info Transport (Mise à jour avec les colonnes demandées)
 STEP_2_EDIT_COLUMNS = [
     'StatutLivraison', 'NomTransporteur', 'NomSaisie', 
     'DateLivraison', 'HeureLivraison', 'Emplacement', 'NbPalettes', 
     'Poids_total', 'Commentaire_Livraison'
 ]
 
-# Étape 3: Saisie Déballage (Colonnes à éditer)
+# Étape 3: Saisie Déballage (Mise à jour avec les colonnes demandées)
 STEP_3_EDIT_COLUMNS = [
     'Colis_manquant/abimé/ouvert', 'NomDeballage', 'DateDebutDeballage', 
     'Litiges', 'Commentaire_litige'
@@ -510,6 +510,7 @@ def display_data_editor(df_filtered, editable_cols):
         height=500,
         use_container_width=True,
         hide_index=True,
+        num_rows="dynamic", # IMPORTANT : Permet la sélection et la suppression de lignes
         column_order=[col for col in APP_VIEW_COLUMNS if col in df_filtered.columns],
         column_config=column_configs,
         # Clé incrémentée lors de la sauvegarde/import pour réinitialiser l'état d'édition
@@ -613,7 +614,7 @@ def step_4_non_saisie():
         key="pending_bl_editor",
         use_container_width=True,
         hide_index=False,
-        num_rows="dynamic", # ⬅️ CHANGEMENT ICI pour activer la sélection et l'icône poubelle
+        num_rows="dynamic", 
         column_order=PENDING_BL_COLUMNS,
         column_config={
             # Ces colonnes doivent être de type string dans le DF, ce qui est assuré
