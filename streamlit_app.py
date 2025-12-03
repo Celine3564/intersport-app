@@ -343,7 +343,10 @@ def add_new_pdc_reception(magasin, fournisseur, mt_ht, acheteur_pdc, date_livrai
 
 @st.cache_data(ttl=60)
 def load_non_saisie_data():
-    """ Lit la feuille Google pour les BLs en attente de saisie informatique. """
+    """ 
+    Lit la feuille Google pour les BLs en attente de saisie informatique 
+    et s'assure que la colonne de date est de type datetime.
+    """
     try:
         gc = authenticate_gsheet()
         sh = gc.open_by_key(SHEET_ID)
@@ -362,18 +365,23 @@ def load_non_saisie_data():
         with st.spinner(f'Chargement des BLs en attente...'):
             df = pd.DataFrame(worksheet.get_all_records())
         
-        # Remplissage des colonnes manquantes si besoin (après la création)
-        for col in PENDING_BL_COLUMNS:
-            if col not in df.columns:
-                df[col] = ''
+        # S'assurer que les colonnes nécessaires existent
+        df = df.reindex(columns=PENDING_BL_COLUMNS)
         
-        # S'assurer que le DF est trié par date pour le suivi quotidien
+        # ⚠️ FIX pour la StreamlitAPIException: Assurer que la colonne de date est de type datetime
         if 'DateReceptionPhysique' in df.columns:
-            # Tentative de conversion en datetime pour un tri correct, gestion des erreurs
-            df['DateReceptionPhysique_dt'] = pd.to_datetime(df['DateReceptionPhysique'], errors='coerce')
-            df = df.sort_values(by='DateReceptionPhysique_dt', ascending=False).drop(columns=['DateReceptionPhysique_dt'])
+            # Convertir la colonne en datetime. 'errors=coerce' tourne les dates invalides en NaT.
+            df['DateReceptionPhysique'] = pd.to_datetime(df['DateReceptionPhysique'], errors='coerce')
+            
+            # Trier le DF en utilisant la colonne datetime
+            df = df.sort_values(by='DateReceptionPhysique', ascending=False)
+            
+        # S'assurer que les autres colonnes sont des chaînes (pour la robustesse)
+        for col in PENDING_BL_COLUMNS:
+            if col != 'DateReceptionPhysique' and col in df.columns:
+                df[col] = df[col].fillna('').astype(str)
 
-        df = df.reindex(columns=PENDING_BL_COLUMNS).fillna('')
+        # Le reindexage est déjà fait, NaT (non-valeur pour datetime) est correct.
         return df
 
     except Exception as e:
@@ -391,6 +399,11 @@ def save_pending_bl_updates(df_current, deleted_rows):
         
         # Créer le DataFrame final à sauvegarder en retirant les lignes supprimées
         df_final = df_current.drop(deleted_rows).reset_index(drop=True)
+
+        # Convertir les colonnes datetime en chaînes de caractères (format YYYY-MM-DD)
+        # pour l'écriture dans Google Sheets
+        if 'DateReceptionPhysique' in df_final.columns:
+             df_final['DateReceptionPhysique'] = df_final['DateReceptionPhysique'].dt.strftime('%Y-%m-%d').fillna('')
 
         # 1. Préparation des données pour l'écriture (y compris les en-têtes)
         data_to_save = [PENDING_BL_COLUMNS] + df_final.values.tolist()
@@ -420,7 +433,7 @@ def add_pending_bl(fournisseur, numero_bl):
         new_row = {
             'Fournisseur': fournisseur,
             'NuméroBL': numero_bl,
-            'DateReceptionPhysique': datetime.now().strftime('%Y-%m-%d'),
+            'DateReceptionPhysique': datetime.now().strftime('%Y-%m-%d'), # Date au format string
             'Statut': 'à saisir'
         }
         
@@ -602,9 +615,11 @@ def step_4_non_saisie():
         num_rows="fixed",
         column_order=PENDING_BL_COLUMNS,
         column_config={
-            'Fournisseur': st.column_config.TextColumn('Fournisseur'),
-            'NuméroBL': st.column_config.TextColumn('Numéro BL'),
-            'DateReceptionPhysique': st.column_config.DatetimeColumn('Date Réception Physique', format="YYYY-MM-DD"),
+            # Ces colonnes doivent être de type string dans le DF, ce qui est assuré
+            'Fournisseur': st.column_config.TextColumn('Fournisseur', disabled=True),
+            'NuméroBL': st.column_config.TextColumn('Numéro BL', disabled=True),
+            # ⚠️ FIX : La colonne doit être de type datetime64 dans le DF pour utiliser DatetimeColumn
+            'DateReceptionPhysique': st.column_config.DatetimeColumn('Date Réception Physique', format="YYYY-MM-DD", disabled=True), 
             'Statut': st.column_config.TextColumn('Statut', disabled=True)
         }
     )
