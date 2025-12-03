@@ -343,10 +343,12 @@ def main():
         ) for col in APP_VIEW_COLUMNS
     }
     
-    # Éditeur de données
-    # Le key "command_editor" et l'événement on_select ont été retirés pour la simplicité
+ # Éditeur de données
+    # AJOUT DE LA CLÉ pour que la sélection fonctionne.
+    # L'événement on_select="rerun" a été omis comme demandé.
     edited_df = st.data_editor(
         df_data,
+        key="command_editor", # Clé ajoutée ici
         height=500,
         use_container_width=True,
         hide_index=True,
@@ -355,57 +357,46 @@ def main():
         # IMPORTANT : L'édition est permise mais les données éditées NE SONT PAS utilisées ni sauvegardées.
     )
 
-
-    # 5. Affichage des détails de la ligne sélectionnée (Feature 1)
+    # --- 3. Affichage des détails de la ligne sélectionnée ---
     
     # Vérifie si la sélection est présente et non vide
     selection_state = st.session_state.get("command_editor", {}).get("selection", {})
     selected_rows_indices = selection_state.get("rows", [])
     
-     if selected_rows_indices:
-        # Récupère l'index de la ligne sélectionnée dans le DF filtré (c'est l'index qui est potentiellement problématique)
-         selected_index_in_filtered_df = selected_rows_indices[0]
+    if selected_rows_indices:
+        # Récupère l'index de la ligne sélectionnée dans le DF affiché
+        selected_index = selected_rows_indices[0]
         
-         try:
-            # 1. Récupérer le NuméroAuto (clé unique) de la ligne sélectionnée dans le DF filtré ACTUEL
-           # key_value = df_filtered.iloc[selected_index_in_filtered_df][KEY_COLUMN]
+        try:
+            # Accès direct à la ligne en utilisant l'index sur df_data
+            selected_row_data = df_data.iloc[selected_index]
             
-            # 2. Utiliser la clé unique pour récupérer la ligne complète dans le DF filtré
-            # S'assurer que la ligne existe toujours dans le DF filtré avant d'essayer de l'accéder.
-           row_match = df_filtered[df_filtered[KEY_COLUMN] == key_value]
-            
-            if row_match.empty:
-                 # Gère le cas où l'élément sélectionné n'est plus dans le DF après un changement de filtre
-                 raise IndexError("Selected row not found after filter change.")
-                 
-             selected_row_data = row_match.iloc[0]
-            
-             st.divider()
-             st.markdown("### 🔎 Détails de la Commande Sélectionnée")
+            st.divider()
+            st.markdown("### 🔎 Détails de la Commande Sélectionnée")
             
             # Utilisation de colonnes pour une meilleure mise en page
-             detail_cols = st.columns(4)
-           col_index = 0
+            detail_cols = st.columns(4)
+            col_index = 0
             
             # Affichage des informations
-             for col_name in APP_VIEW_COLUMNS:
-            value = selected_row_data.get(col_name, "N/A")
+            for col_name in APP_VIEW_COLUMNS:
+                value = selected_row_data.get(col_name, "N/A")
                 
-           if col_name in ['Commentaire_Livraison', 'Commentaire_litige']:
+                if col_name in ['Commentaire_Livraison', 'Commentaire_litige']:
                     # Utilisation de st.markdown pour les champs de commentaires longs
-            detail_cols[col_index % 4].markdown(f"**{col_name} :** {value if value else 'Non spécifié'}")
+                    detail_cols[col_index % 4].markdown(f"**{col_name} :** {value if value else 'Non spécifié'}")
                 else:
                     # Utilisation de st.metric pour les autres champs (plus compact)
-                     detail_cols[col_index % 4].metric(col_name, value if value else "Non spécifié")
-                 col_index += 1
-             st.divider()
+                    detail_cols[col_index % 4].metric(col_name, value if value else "Non spécifié")
+                col_index += 1
+            st.divider()
 
-         except IndexError:
-            # Si l'IndexError est levée (problème d'index/filtre), on gère silencieusement.
-             st.info("Détails non affichés : La sélection précédente a été perdue suite à l'application du filtre ou au rechargement des données.")
-         except Exception as e:
-            # Gestion d'autres erreurs potentielles (juste au cas où)
-             st.error(f"Erreur inattendue lors de l'affichage des détails : {e}")
+        except IndexError:
+            # Gère le cas où l'index n'existe plus (ex: après un rafraîchissement)
+            st.info("Détails non affichés : La sélection précédente a été perdue.")
+        except Exception as e:
+            st.error(f"Erreur inattendue lors de l'affichage des détails : {e}")
+
 
 
     # 7. Bouton de Rafraîchissement et Sauvegarde
