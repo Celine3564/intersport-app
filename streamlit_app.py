@@ -10,6 +10,7 @@ from datetime import datetime
 SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk' 
 WORKSHEET_NAME = 'DATA' 
 PENDING_BL_WORKSHEET_NAME = 'BL_EN_ATTENTE' 
+PDC_WORKSHEET_NAME = 'PDC' # Nouvelle feuille pour l'étape 5
 
 # --- DÉFINITION DES COLONNES PAR ÉTAPE ---
 
@@ -65,6 +66,9 @@ ALL_APP_COLUMNS = list(set([KEY_COLUMN] + ALL_EXCEL_COLUMNS + APP_MANUAL_COLUMNS
 
 # Colonnes pour les BLs en attente (Étape 4)
 PENDING_BL_COLUMNS = ['Fournisseur', 'NuméroBL', 'DateReceptionPhysique', 'Statut']
+
+# Colonnes pour les PDC (Étape 5) - Nouvelle structure
+PDC_COLUMNS = ['Fournisseur', 'NuméroBL', 'DateReceptionPhysique', 'Acheteur', 'mail acheteur', 'date relance', 'Nombre de relance']
 
 # Colonnes requises pour le fichier d'importation
 IMPORT_REQUIRED_COLUMNS = [KEY_COLUMN, 'Magasin', 'Fournisseur', 'Mt TTC'] 
@@ -278,36 +282,7 @@ def upload_new_receptions(uploaded_file, column_headers):
     except Exception as e:
         st.error(f"Erreur lors de l'importation : {e}")
 
-def add_new_pdc_reception(magasin, fournisseur, mt_ttc, acheteur_pdc, date_livraison, column_headers):
-    """ Ajoute manuellement une nouvelle commande PDC. """
-    try:
-        gc = authenticate_gsheet()
-        sh = gc.open_by_key(SHEET_ID)
-        worksheet = sh.worksheet(WORKSHEET_NAME)
-
-        num_auto = f"PDC-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        new_row_data = {col: '' for col in column_headers} 
-        
-        new_row_data[KEY_COLUMN] = num_auto
-        new_row_data['Magasin'] = magasin
-        new_row_data['Fournisseur'] = fournisseur
-        new_row_data['Mt TTC'] = str(mt_ttc) 
-        new_row_data['AcheteurPDC'] = acheteur_pdc
-        new_row_data['PDC'] = 'OUI' 
-        new_row_data['Clôturé'] = 'NON' 
-
-        data_to_append = [[new_row_data.get(col, '') for col in column_headers]]
-        worksheet.append_rows(data_to_append, value_input_option='USER_ENTERED')
-        
-        st.success(f"✅ Commande PDC '{num_auto}' ajoutée!")
-        st.cache_data.clear()
-        get_all_existing_ids.clear()
-        st.rerun()
-
-    except Exception as e:
-        st.error(f"Erreur saisie manuelle : {e}")
-
-# --- FONCTIONS POUR L'Étape 4 ---
+# --- FONCTIONS POUR L'Étape 4 (BL en attente) ---
 @st.cache_data(ttl=60)
 def load_non_saisie_data():
     try:
@@ -372,6 +347,106 @@ def add_pending_bl(fournisseur, numero_bl):
         st.rerun()
     except Exception as e:
         st.error(f"Erreur ajout BL : {e}")
+
+# --- FONCTIONS POUR L'Étape 5 (PDC) ---
+@st.cache_data(ttl=60)
+def load_pdc_data():
+    """ 
+    Lit la feuille Google 'PDC' et retourne un DataFrame.
+    """
+    try:
+        gc = authenticate_gsheet()
+        sh = gc.open_by_key(SHEET_ID)
+        
+        try:
+            worksheet = sh.worksheet(PDC_WORKSHEET_NAME)
+        except gspread.WorksheetNotFound:
+            worksheet = sh.add_worksheet(title=PDC_WORKSHEET_NAME, rows=1, cols=len(PDC_COLUMNS))
+            worksheet.append_row(PDC_COLUMNS)
+            return pd.DataFrame(columns=PDC_COLUMNS)
+
+        with st.spinner(f'Chargement des PDC...'):
+            df = pd.DataFrame(worksheet.get_all_records())
+        
+        df = df.reindex(columns=PDC_COLUMNS)
+        
+        # Gestion des dates
+        if 'DateReceptionPhysique' in df.columns:
+            df['DateReceptionPhysique'] = pd.to_datetime(df['DateReceptionPhysique'], errors='coerce')
+        if 'date relance' in df.columns:
+            df['date relance'] = pd.to_datetime(df['date relance'], errors='coerce')
+            
+        # Tri par date de réception
+        if 'DateReceptionPhysique' in df.columns:
+            df = df.sort_values(by='DateReceptionPhysique', ascending=False)
+            
+        # Conversion string pour les autres
+        for col in PDC_COLUMNS:
+            if col not in ['DateReceptionPhysique', 'date relance'] and col in df.columns:
+                df[col] = df[col].fillna('').astype(str)
+                
+        return df
+
+    except Exception as e:
+        st.error(f"Erreur de chargement des PDC. Erreur: {e}")
+        return pd.DataFrame(columns=PDC_COLUMNS)
+
+def add_pdc_entry(fournisseur, numero_bl, date_reception, acheteur, mail_acheteur, date_relance, nb_relance):
+    """ Ajoute manuellement une nouvelle entrée dans la feuille PDC. """
+    try:
+        gc = authenticate_gsheet()
+        sh = gc.open_by_key(SHEET_ID)
+        worksheet = sh.worksheet(PDC_WORKSHEET_NAME)
+
+        new_row = {
+            'Fournisseur': fournisseur,
+            'NuméroBL': numero_bl,
+            'DateReceptionPhysique': date_reception.strftime('%Y-%m-%d') if date_reception else '',
+            'Acheteur': acheteur,
+            'mail acheteur': mail_acheteur,
+            'date relance': date_relance.strftime('%Y-%m-%d') if date_relance else '',
+            'Nombre de relance': str(nb_relance)
+        }
+        
+        data_to_append = [[new_row.get(col, '') for col in PDC_COLUMNS]]
+        worksheet.append_rows(data_to_append, value_input_option='USER_ENTERED')
+        
+        st.success(f"✅ PDC '{numero_bl}' ajouté.")
+        load_pdc_data.clear() 
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"Erreur lors de l'ajout PDC : {e}")
+
+def save_pdc_updates(df_current, deleted_rows):
+    """
+    Met à jour la feuille PDC en supprimant les lignes cochées.
+    """
+    try:
+        gc = authenticate_gsheet()
+        sh = gc.open_by_key(SHEET_ID)
+        worksheet = sh.worksheet(PDC_WORKSHEET_NAME)
+        
+        df_final = df_current.drop(deleted_rows).reset_index(drop=True)
+
+        # Formatage des dates pour l'écriture
+        if 'DateReceptionPhysique' in df_final.columns:
+             df_final['DateReceptionPhysique'] = df_final['DateReceptionPhysique'].dt.strftime('%Y-%m-%d').fillna('')
+        if 'date relance' in df_final.columns:
+             df_final['date relance'] = df_final['date relance'].dt.strftime('%Y-%m-%d').fillna('')
+
+        data_to_save = [PDC_COLUMNS] + df_final.values.tolist()
+        worksheet.clear()
+        worksheet.update('A1', data_to_save)
+        
+        st.success(f"🗑️ Mise à jour PDC effectuée.")
+        st.cache_data.clear()
+        load_pdc_data.clear() 
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"Erreur lors de la mise à jour des PDC : {e}")
+
 
 # --- UI HELPER ---
 def display_data_editor(df_filtered, view_cols, editable_cols):
@@ -479,18 +554,12 @@ def step_2_transport(df_data):
     if sel_fourn != 'Tous': df_filtered = df_filtered[df_filtered['Fournisseur'] == sel_fourn]
     if sel_date != 'Tous': df_filtered = df_filtered[df_filtered['Livré le'].astype(str) == sel_date]
 
-    # Bouton Enregistrer en haut à droite du compteur
     c_head, c_btn = st.columns([3, 1])
     with c_head:
         st.subheader(f"Commandes : {len(df_filtered)}")
     with c_btn:
         if st.button("💾 Enregistrer", key="btn_save_s2"):
             save_data_to_gsheet(None, st.session_state['df_filtered_pre_edit'], st.session_state['column_headers'])
-    
-    # On met à jour l'état session pour la sauvegarde *avant* l'affichage de l'éditeur
-    # Cependant display_data_editor le fait aussi.
-    # IMPORTANT: Le bouton déclenche la sauvegarde AVANT l'affichage de l'éditeur lors du rerun
-    # MAIS il utilise les données de l'édition précédente stockées dans session_state.
     
     edited_df = display_data_editor(df_filtered, STEP_2_VIEW_COLUMNS, STEP_2_EDITABLE)
     display_details(df_filtered, STEP_2_VIEW_COLUMNS)
@@ -524,25 +593,108 @@ def step_3_deballage(df_data):
         st.subheader(f"Commandes : {len(df_filtered)}")
     with c_btn:
         if st.button("💾 Enregistrer", key="btn_save_s3"):
-            save_data_to_gsheet(None, st.session_state['df_filtered_pre_edit'], st.session_state['column_headers'])
+            save_data_to_gsheet(edited_df, st.session_state['df_filtered_pre_edit'], st.session_state['column_headers'])
     
     edited_df = display_data_editor(df_filtered, STEP_3_VIEW_COLUMNS, STEP_3_EDITABLE)
     display_details(df_filtered, STEP_3_VIEW_COLUMNS)
 
+def step_4_non_saisie():
+    st.header("4️⃣ Marchandise non saisie")
+    st.caption("Suivi quotidien des BLs physiques non saisis.")
+
+    df_pending = load_non_saisie_data()
+    
+    with st.expander("➕ Ajouter une BL en attente", expanded=True):
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            fourn = st.text_input("Fournisseur", key="p_fourn")
+            bl = st.text_input("Numéro BL", key="p_bl")
+        with c2:
+            st.markdown("<br><br>", unsafe_allow_html=True)
+            if st.button("Ajouter", disabled=not (fourn and bl)):
+                add_pending_bl(fourn, bl)
+
+    st.markdown("---")
+    st.subheader(f"En attente : {len(df_pending)}")
+    
+    if df_pending.empty:
+        st.info("Liste vide.")
+        return
+
+    edited_pending_df = st.data_editor(
+        df_pending, 
+        key="pending_bl_editor",
+        use_container_width=True,
+        hide_index=False,
+        num_rows="dynamic", 
+        column_order=PENDING_BL_COLUMNS,
+        column_config={
+            'Fournisseur': st.column_config.TextColumn('Fournisseur', disabled=True),
+            'NuméroBL': st.column_config.TextColumn('Numéro BL', disabled=True),
+            'DateReceptionPhysique': st.column_config.DatetimeColumn('Date Réception', format="YYYY-MM-DD", disabled=True), 
+            'Statut': st.column_config.TextColumn('Statut', disabled=True)
+        }
+    )
+    
+    deleted_rows = st.session_state["pending_bl_editor"].get("deleted_rows", [])
+    if deleted_rows:
+        if st.button(f"🗑️ Confirmer suppression ({len(deleted_rows)})"):
+            save_pending_bl_updates(df_pending, deleted_rows)
 
 def step5_pdc_saisie(column_headers):
     st.header("5️⃣ Saisie Manuelle PDC")
-    with st.form("pdc_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            mag = st.text_input("Magasin")
-            fourn = st.text_input("Fournisseur")
-        with c2:
-            mt = st.number_input("Montant TTC", step=0.01)
-            ach = st.text_input("Acheteur PDC")
-        
-        if st.form_submit_button("Valider"):
-            add_new_pdc_reception(mag, fourn, mt, ach, datetime.now(), column_headers)
+    st.caption("Suivi des PDC (Feuille 'PDC').")
+
+    df_pdc = load_pdc_data()
+
+    # Formulaire d'ajout
+    with st.expander("➕ Ajouter un PDC", expanded=True):
+        with st.form("pdc_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                fournisseur = st.text_input("Fournisseur")
+                numero_bl = st.text_input("Numéro BL")
+                date_reception = st.date_input("Date Réception Physique", datetime.now())
+                acheteur = st.text_input("Acheteur")
+            with c2:
+                mail_acheteur = st.text_input("Mail Acheteur")
+                date_relance = st.date_input("Date Relance", None)
+                nb_relance = st.number_input("Nombre de relance", min_value=0, step=1)
+            
+            if st.form_submit_button("Ajouter PDC"):
+                add_pdc_entry(fournisseur, numero_bl, date_reception, acheteur, mail_acheteur, date_relance, nb_relance)
+
+    st.markdown("---")
+    st.subheader(f"PDC en cours : {len(df_pdc)}")
+
+    if df_pdc.empty:
+        st.info("Aucun PDC.")
+        return
+
+    # Tableau avec suppression activée
+    edited_pdc_df = st.data_editor(
+        df_pdc,
+        key="pdc_editor",
+        use_container_width=True,
+        hide_index=False,
+        num_rows="dynamic",
+        column_order=PDC_COLUMNS,
+        column_config={
+            'Fournisseur': st.column_config.TextColumn('Fournisseur', disabled=True),
+            'NuméroBL': st.column_config.TextColumn('Numéro BL', disabled=True),
+            'DateReceptionPhysique': st.column_config.DatetimeColumn('Date Réception', format="YYYY-MM-DD", disabled=True),
+            'Acheteur': st.column_config.TextColumn('Acheteur', disabled=True),
+            'mail acheteur': st.column_config.TextColumn('Mail Acheteur', disabled=True),
+            'date relance': st.column_config.DatetimeColumn('Date Relance', format="YYYY-MM-DD", disabled=True),
+            'Nombre de relance': st.column_config.NumberColumn('Nb Relance', disabled=True)
+        }
+    )
+
+    deleted_rows = st.session_state["pdc_editor"].get("deleted_rows", [])
+    if deleted_rows:
+        if st.button(f"🗑️ Confirmer suppression ({len(deleted_rows)})"):
+            save_pdc_updates(df_pdc, deleted_rows)
+
 
 # --- MAIN ---
 def main():
@@ -568,6 +720,7 @@ def main():
             st.cache_data.clear()
             get_all_existing_ids.clear()
             load_non_saisie_data.clear()
+            load_pdc_data.clear()
             st.rerun()
 
     if df_data.empty and st.session_state.current_step not in ['home', 'step1', 'step4', 'step5']:
