@@ -9,12 +9,16 @@ from datetime import datetime
 # --- CONSTANTES GSPREAD ---
 SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk' 
 WORKSHEET_NAME = 'DATA' 
+PENDING_BL_WORKSHEET_NAME = 'BL_EN_ATTENTE' # Nouvelle constante pour le suivi quotidien
 
 # --- DÉFINITION DES COLONNES PAR ÉTAPE ---
 
 # Colonnes de l'Excel (Lecture seule, utilisées dans toutes les étapes)
 ESSENTIAL_EXCEL_COLUMNS = ['Magasin', 'Fournisseur', 'Mt HT'] 
 KEY_COLUMN = 'NuméroAuto'
+
+# Colonnes pour les BLs en attente de saisie informatique (Étape 4)
+PENDING_BL_COLUMNS = ['Fournisseur', 'NuméroBL', 'DateReceptionPhysique', 'Statut']
 
 # Étape 1: Import ou Saisie Réception (Colonnes pour l'affichage de cette étape)
 STEP_1_COLUMNS = ESSENTIAL_EXCEL_COLUMNS + ['PDC', 'AcheteurPDC']
@@ -77,7 +81,7 @@ def authenticate_gsheet():
 @st.cache_data(ttl=600) 
 def load_data_from_gsheet():
     """ 
-    Lit la Google Sheet et retourne un DataFrame avec les commandes ouvertes
+    Lit la Google Sheet 'DATA' et retourne un DataFrame avec les commandes ouvertes
     ainsi que les en-têtes de colonnes.
     """
     try:
@@ -139,7 +143,6 @@ def get_all_existing_ids(column_headers):
             # Trouver l'index de la colonne clé
             key_col_index = column_headers.index(KEY_COLUMN) + 1 
         except ValueError:
-            # Si on ne trouve pas, on utilise la colonne A (1) par défaut, mais une erreur est plus sûre
             st.error(f"Colonne essentielle '{KEY_COLUMN}' introuvable dans la Google Sheet pour la vérification des IDs.")
             return set()
 
@@ -231,12 +234,9 @@ def upload_new_receptions(uploaded_file, column_headers):
             return
             
         # --- NOUVEAU CONTRÔLE DE DOUBLONS ---
-        
-        # 1. Préparation des IDs du fichier d'importation
         df_new[KEY_COLUMN] = df_new[KEY_COLUMN].astype(str).str.strip()
-        import_ids = df_new[KEY_COLUMN].tolist()
         
-        # 2. Doublons INTERNES au fichier d'import
+        # 1. Doublons INTERNES au fichier d'import
         internal_duplicates = df_new[df_new.duplicated(subset=[KEY_COLUMN], keep=False)][KEY_COLUMN].unique()
         if len(internal_duplicates) > 0:
             st.warning(f"⚠️ {len(internal_duplicates)} NuméroAuto en doublon dans le fichier d'importation. Les doublons seront ignorés.")
@@ -244,7 +244,7 @@ def upload_new_receptions(uploaded_file, column_headers):
         # Filtrer les doublons internes pour obtenir les IDs uniques à vérifier
         df_unique_to_check = df_new.drop_duplicates(subset=[KEY_COLUMN], keep='first')
         
-        # 3. Doublons EXTERNES (vs Google Sheet)
+        # 2. Doublons EXTERNES (vs Google Sheet)
         existing_ids = get_all_existing_ids(column_headers)
         external_duplicates = df_unique_to_check[df_unique_to_check[KEY_COLUMN].isin(existing_ids)][KEY_COLUMN].tolist()
         
@@ -252,7 +252,7 @@ def upload_new_receptions(uploaded_file, column_headers):
             st.error(f"❌ {len(external_duplicates)} NuméroAuto sont déjà présents dans la base de données et seront ignorés.")
             st.caption(f"Doublons : {', '.join(external_duplicates[:5])}{'...' if len(external_duplicates) > 5 else ''}")
         
-        # 4. Filtrage final : ne garder que les lignes uniques et non existantes
+        # 3. Filtrage final : ne garder que les lignes uniques et non existantes
         df_to_append = df_unique_to_check[~df_unique_to_check[KEY_COLUMN].isin(existing_ids)].copy()
         
         if df_to_append.empty:
@@ -339,6 +339,105 @@ def add_new_pdc_reception(magasin, fournisseur, mt_ht, acheteur_pdc, date_livrai
         st.error(f"Erreur lors de la saisie manuelle : {e}")
 
 
+# --- NOUVELLES FONCTIONS POUR L'Étape 4 : Marchandise Non Saisie ---
+
+@st.cache_data(ttl=60)
+def load_non_saisie_data():
+    """ Lit la feuille Google pour les BLs en attente de saisie informatique. """
+    try:
+        gc = authenticate_gsheet()
+        sh = gc.open_by_key(SHEET_ID)
+        
+        # Tente de trouver ou de créer la feuille si elle n'existe pas
+        try:
+            worksheet = sh.worksheet(PENDING_BL_WORKSHEET_NAME)
+        except gspread.WorksheetNotFound:
+            # Si la feuille n'existe pas, la créer avec les en-têtes
+            st.warning(f"La feuille '{PENDING_BL_WORKSHEET_NAME}' n'existe pas. Création...")
+            worksheet = sh.add_worksheet(title=PENDING_BL_WORKSHEET_NAME, rows=1, cols=len(PENDING_BL_COLUMNS))
+            worksheet.append_row(PENDING_BL_COLUMNS)
+            st.info(f"Feuille '{PENDING_BL_WORKSHEET_NAME}' créée avec succès.")
+            return pd.DataFrame(columns=PENDING_BL_COLUMNS)
+
+        with st.spinner(f'Chargement des BLs en attente...'):
+            df = pd.DataFrame(worksheet.get_all_records())
+        
+        # Remplissage des colonnes manquantes si besoin (après la création)
+        for col in PENDING_BL_COLUMNS:
+            if col not in df.columns:
+                df[col] = ''
+        
+        # S'assurer que le DF est trié par date pour le suivi quotidien
+        if 'DateReceptionPhysique' in df.columns:
+            # Tentative de conversion en datetime pour un tri correct, gestion des erreurs
+            df['DateReceptionPhysique_dt'] = pd.to_datetime(df['DateReceptionPhysique'], errors='coerce')
+            df = df.sort_values(by='DateReceptionPhysique_dt', ascending=False).drop(columns=['DateReceptionPhysique_dt'])
+
+        df = df.reindex(columns=PENDING_BL_COLUMNS).fillna('')
+        return df
+
+    except Exception as e:
+        st.error(f"Erreur de chargement des BLs en attente. Erreur: {e}")
+        return pd.DataFrame(columns=PENDING_BL_COLUMNS)
+
+def save_pending_bl_updates(df_current, deleted_rows):
+    """
+    Met à jour la feuille BL_EN_ATTENTE en supprimant les lignes cochées.
+    """
+    try:
+        gc = authenticate_gsheet()
+        sh = gc.open_by_key(SHEET_ID)
+        worksheet = sh.worksheet(PENDING_BL_WORKSHEET_NAME)
+        
+        # Créer le DataFrame final à sauvegarder en retirant les lignes supprimées
+        df_final = df_current.drop(deleted_rows).reset_index(drop=True)
+
+        # 1. Préparation des données pour l'écriture (y compris les en-têtes)
+        data_to_save = [PENDING_BL_COLUMNS] + df_final.values.tolist()
+        
+        # 2. Écrasement complet de la feuille (plus simple et plus sûr pour cette petite liste)
+        worksheet.clear()
+        worksheet.update('A1', data_to_save)
+        
+        st.success(f"🗑️ {len(deleted_rows)} BL(s) marqué(s) comme saisi(s) informatiquement et supprimé(s).")
+        
+        # Nettoyage et relance
+        st.cache_data.clear()
+        load_non_saisie_data.clear() # Vider le cache de cette fonction
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"Erreur lors de la mise à jour des BLs en attente : {e}")
+
+def add_pending_bl(fournisseur, numero_bl):
+    """ Ajoute manuellement une nouvelle BL en attente. """
+    try:
+        gc = authenticate_gsheet()
+        sh = gc.open_by_key(SHEET_ID)
+        worksheet = sh.worksheet(PENDING_BL_WORKSHEET_NAME)
+
+        # Construction de la ligne
+        new_row = {
+            'Fournisseur': fournisseur,
+            'NuméroBL': numero_bl,
+            'DateReceptionPhysique': datetime.now().strftime('%Y-%m-%d'),
+            'Statut': 'à saisir'
+        }
+        
+        # Préparation des données dans l'ordre des colonnes
+        data_to_append = [[new_row.get(col, '') for col in PENDING_BL_COLUMNS]]
+        
+        # Insertion dans Google Sheet (utilise la première ligne vide)
+        worksheet.append_rows(data_to_append, value_input_option='USER_ENTERED')
+        
+        st.success(f"✅ BL en attente '{numero_bl}' ajoutée pour le suivi.")
+        load_non_saisie_data.clear() # Vider le cache
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"Erreur lors de l'ajout de la BL en attente : {e}")
+
+
 # --- 3. FONCTIONS D'AFFICHAGE DES ÉTAPES ---
 
 def step_1_reception(df_data, column_headers):
@@ -346,20 +445,6 @@ def step_1_reception(df_data, column_headers):
     st.header("1️⃣ Import ou Saisie Réception")
     st.caption("Cette étape sert à ajouter de nouvelles commandes via un fichier ou manuellement (PDC).")
 
-   
-    # --- Importation (Déplacé ici) ---
-    with st.expander("📥 Import de Nouvelles Réceptions (Fichier Excel)", expanded=False):
-        st.caption(f"Fichier requis : Excel (.xlsx) avec au moins les colonnes : {', '.join(IMPORT_REQUIRED_COLUMNS)}.")
-        st.warning("⚠️ Attention : Un contrôle de doublons est effectué sur la colonne 'NuméroAuto'. Les doublons ne seront pas importés.")
-        uploaded_file = st.file_uploader(
-            "Sélectionner un fichier Excel", 
-            type=['xlsx'],
-            key=f"file_uploader_{st.session_state.uploader_key}" 
-        )
-        if uploaded_file is not None and st.button("🚀 Lancer l'Importation"):
-            upload_new_receptions(uploaded_file, column_headers)
-
-    
     # --- Saisie Manuelle PDC ---
     with st.expander("➕ Saisie Manuelle PDC (Commande Ponctuelle)", expanded=True):
         col_form_1, col_form_2, col_form_3 = st.columns(3)
@@ -376,6 +461,19 @@ def step_1_reception(df_data, column_headers):
                 add_new_pdc_reception(magasin, fournisseur, mt_ht, acheteur_pdc, date_livraison, column_headers)
     
     st.markdown("---")
+    
+    # --- Importation (Déplacé ici) ---
+    with st.expander("📥 Import de Nouvelles Réceptions (Fichier Excel)", expanded=False):
+        st.caption(f"Fichier requis : Excel (.xlsx) avec au moins les colonnes : {', '.join(IMPORT_REQUIRED_COLUMNS)}.")
+        st.warning("⚠️ Attention : Un contrôle de doublons est effectué sur la colonne 'NuméroAuto'. Les doublons ne seront pas importés.")
+        uploaded_file = st.file_uploader(
+            "Sélectionner un fichier Excel", 
+            type=['xlsx'],
+            key=f"file_uploader_{st.session_state.uploader_key}" 
+        )
+        if uploaded_file is not None and st.button("🚀 Lancer l'Importation"):
+            upload_new_receptions(uploaded_file, column_headers)
+
 
 def display_data_editor(df_filtered, editable_cols):
     """ Fonction utilitaire pour configurer et afficher le st.data_editor. """
@@ -468,6 +566,61 @@ def step_3_deballage(df_data):
         save_data_to_gsheet(edited_df, st.session_state['df_filtered_pre_edit'], st.session_state['column_headers'])
 
 
+def step_4_non_saisie():
+    """ Étape 4 : Marchandise non saisie / BLs en attente de saisie informatique. """
+    st.header("4️⃣ Marchandise non saisie (Suivi Quotidien des BLs)")
+    st.caption("Utilisez cette étape pour lister les Bons de Livraison reçus physiquement, mais pas encore entrés dans le système de gestion des commandes (Feuille DATA).")
+
+    df_pending = load_non_saisie_data()
+    
+    # --- Formulaire d'ajout rapide ---
+    with st.expander("➕ Ajouter une nouvelle BL en attente", expanded=True):
+        col_form_1, col_form_2 = st.columns([3, 1])
+        with col_form_1:
+            pending_fournisseur = st.text_input("Fournisseur", key="pending_fournisseur_input")
+            pending_bl = st.text_input("Numéro du Bon de Livraison (BL)", key="pending_bl_input")
+        with col_form_2:
+            st.markdown("<br><br>", unsafe_allow_html=True) # Espace pour alignement
+            if st.button("Ajouter à la liste de suivi", disabled=not (pending_fournisseur and pending_bl)):
+                add_pending_bl(pending_fournisseur, pending_bl)
+
+    st.markdown("---")
+    
+    st.subheader(f"BLs en attente de saisie informatique : {len(df_pending)}")
+    
+    # --- Affichage et suppression ---
+    if df_pending.empty:
+        st.info("La liste de suivi est vide. Toutes les BLs physiques ont été saisies.")
+        return
+
+    # Utiliser st.data_editor pour permettre la sélection/suppression visuelle
+    edited_pending_df = st.data_editor(
+        df_pending, 
+        key="pending_bl_editor",
+        use_container_width=True,
+        hide_index=False,
+        num_rows="fixed",
+        column_order=PENDING_BL_COLUMNS,
+        column_config={
+            'Fournisseur': st.column_config.TextColumn('Fournisseur'),
+            'NuméroBL': st.column_config.TextColumn('Numéro BL'),
+            'DateReceptionPhysique': st.column_config.DatetimeColumn('Date Réception Physique', format="YYYY-MM-DD"),
+            'Statut': st.column_config.TextColumn('Statut', disabled=True)
+        }
+    )
+    
+    # Bouton de confirmation de suppression (après saisie informatique)
+    deleted_rows_indices = st.session_state["pending_bl_editor"].get("deleted_rows", [])
+
+    if len(deleted_rows_indices) > 0:
+        st.warning(f"Vous avez marqué {len(deleted_rows_indices)} BL(s) comme **saisi(s)** dans le système.")
+        if st.button(f"🗑️ Confirmer la suppression de {len(deleted_rows_indices)} BL(s)"):
+            # L'index renvoyé par deleted_rows est l'index dans le DF original (df_pending)
+            save_pending_bl_updates(df_pending, deleted_rows_indices)
+    else:
+        st.info("Cochez la ou les lignes des BLs qui ont été saisies dans le système, puis cliquez sur le bouton de suppression (icône poubelle).")
+
+
 def display_details(df_filtered, editable_cols):
     """ Fonction utilitaire pour afficher les détails de la ligne sélectionnée. """
     selection_state = st.session_state.get("command_editor", {}).get("selection", {})
@@ -537,15 +690,18 @@ def main():
             st.session_state.current_step = 'step2'
         if st.button("3️⃣ Saisie Déballage", key="nav_step3"):
             st.session_state.current_step = 'step3'
+        if st.button("4️⃣ Marchandise non saisie", key="nav_step4"): # NOUVEAU
+            st.session_state.current_step = 'step4'
         
         st.markdown("---")
         if st.button("🔄 Rafraîchir les données", key="refresh_data_side"):
             st.cache_data.clear()
             get_all_existing_ids.clear() # Vider le cache des IDs
+            load_non_saisie_data.clear() # Vider le cache des BLs en attente
             st.rerun() 
             
     # Si les données ne sont pas chargées, afficher un message et empêcher la navigation
-    if df_data.empty and st.session_state.current_step != 'home':
+    if df_data.empty and st.session_state.current_step not in ['home', 'step4']:
         st.error("Veuillez rafraîchir ou importer des données pour commencer.")
         st.session_state.current_step = 'home'
 
@@ -571,6 +727,10 @@ def main():
                  st.rerun()
         
         st.markdown("---")
+        if st.button("Étape 4: Marchandise non saisie", use_container_width=True, help="Suivi quotidien des Bons de Livraison reçus physiquement."):
+            st.session_state.current_step = 'step4'
+            st.rerun()
+            
         st.info(f"Commandes Ouvertes Actuellement : **{len(df_data)}**")
         
     elif st.session_state.current_step == 'step1':
@@ -581,6 +741,9 @@ def main():
         
     elif st.session_state.current_step == 'step3':
         step_3_deballage(df_data)
+
+    elif st.session_state.current_step == 'step4':
+        step_4_non_saisie()
 
 
 if __name__ == '__main__':
