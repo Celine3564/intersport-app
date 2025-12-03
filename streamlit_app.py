@@ -10,7 +10,7 @@ from datetime import datetime
 SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk' 
 WORKSHEET_NAME = 'DATA' 
 PENDING_BL_WORKSHEET_NAME = 'BL_EN_ATTENTE' 
-PDC_WORKSHEET_NAME = 'PDC' # Nouvelle feuille pour l'étape 5
+PDC_WORKSHEET_NAME = 'PDC' 
 
 # --- DÉFINITION DES COLONNES PAR ÉTAPE ---
 
@@ -27,8 +27,8 @@ APP_MANUAL_COLUMNS = [
     'StatutLivraison', 
     'NomTransporteur', 'Emplacement', 'NbPalettes', 'Poids_total', 
     'Commentaire_Livraison', 'LitigeReception', 'Colis_manquant/abimé/ouvert',
-    'NomDeballage', 'DateDebutDeballage', 'LitigesDeballe', 'Commentaire_litige'
-    
+    'NomDeballage', 'DateDebutDeballage', 'LitigesDeballe', 'Commentaire_litige',
+    'PDC', 'AcheteurPDC'
 ]
 
 # --- DEFINITION DES VUES ---
@@ -36,7 +36,7 @@ APP_MANUAL_COLUMNS = [
 # Étape 1 : Affichage Uniquement
 STEP_1_VIEW_COLUMNS = [
     KEY_COLUMN, 'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
-    'Livré le', 'Qté', 'Collection', 'StatutLivraison'
+    'Livré le', 'Qté', 'Collection', 'StatutLivraison', 'PDC', 'AcheteurPDC'
 ]
 
 # Étape 2 : Saisie Transport
@@ -67,7 +67,7 @@ ALL_APP_COLUMNS = list(set([KEY_COLUMN] + ALL_EXCEL_COLUMNS + APP_MANUAL_COLUMNS
 # Colonnes pour les BLs en attente (Étape 4)
 PENDING_BL_COLUMNS = ['Fournisseur', 'NuméroBL', 'DateReceptionPhysique', 'Statut']
 
-# Colonnes pour les PDC (Étape 5) - Nouvelle structure
+# Colonnes pour les PDC (Étape 5)
 PDC_COLUMNS = ['Fournisseur', 'NuméroBL', 'DateReceptionPhysique', 'Acheteur', 'mail acheteur', 'date relance', 'Nombre de relance']
 
 # Colonnes requises pour le fichier d'importation
@@ -263,6 +263,7 @@ def upload_new_receptions(uploaded_file, column_headers):
             if col not in df_insert.columns:
                 if col == 'Clôturé': df_insert[col] = 'NON' 
                 elif col == 'PDC': df_insert[col] = 'NON'
+                elif col == 'StatutLivraison': df_insert[col] = 'Import_Reception' # <--- MODIFICATION ICI
                 else: df_insert[col] = ''
         
         df_insert = df_insert.reindex(columns=column_headers).fillna('').astype(str)
@@ -273,7 +274,7 @@ def upload_new_receptions(uploaded_file, column_headers):
         worksheet = sh.worksheet(WORKSHEET_NAME)
         worksheet.append_rows(data_to_append, value_input_option='USER_ENTERED')
         
-        st.success(f"✅ **{len(data_to_append)}** nouvelle(s) réception(s) importée(s)!")
+        st.success(f"✅ **{len(data_to_append)}** nouvelle(s) réception(s) importée(s) avec le statut 'Import_Reception'!")
         st.session_state.uploader_key += 1 
         st.cache_data.clear()
         get_all_existing_ids.clear()
@@ -508,7 +509,7 @@ def step_1_reception(df_data, column_headers):
     st.header("1️⃣ Import / Saisie Réception")
     
     with st.expander("📥 Import de Nouvelles Réceptions (Fichier Excel)", expanded=True):
-        st.caption(f"Fichier Excel avec au moins : {', '.join(IMPORT_REQUIRED_COLUMNS)}.")
+        st.caption(f"Fichier Excel avec au moins : {', '.join(IMPORT_REQUIRED_COLUMNS)}. Le statut 'StatutLivraison' sera mis à 'Import_Reception'.")
         uploaded_file = st.file_uploader(
             "Sélectionner un fichier", 
             type=['xlsx'],
@@ -518,16 +519,32 @@ def step_1_reception(df_data, column_headers):
             upload_new_receptions(uploaded_file, column_headers)
     
     st.markdown("---")
-    st.subheader("Visualisation des Réceptions (Lecture Seule)")
     
-    magasins = ['Tous'] + sorted(df_data['Magasin'].unique().tolist())
-    sel_mag = st.selectbox("Magasin:", magasins, key="s1_mag")
+    # --- NOUVEAUX FILTRES ÉTAPE 1 ---
+    col1, col2, col3 = st.columns(3)
     
-    df_show = df_data.copy()
-    if sel_mag != 'Tous':
-        df_show = df_show[df_show['Magasin'] == sel_mag]
+    with col1:
+        magasins = ['Tous'] + sorted(df_data['Magasin'].unique().tolist())
+        sel_mag = st.selectbox("Magasin:", magasins, key="s1_mag")
+    
+    with col2:
+        fournisseurs = ['Tous'] + sorted(df_data['Fournisseur'].unique().tolist())
+        sel_fourn = st.selectbox("Fournisseur:", fournisseurs, key="s1_fourn")
         
-    display_data_editor(df_show, STEP_1_VIEW_COLUMNS, [])
+    with col3:
+        # Assurez-vous que 'Livré le' est traité comme une chaîne pour la sélection
+        dates = ['Tous'] + sorted(df_data['Livré le'].astype(str).unique().tolist())
+        sel_date = st.selectbox("Date (Livré le):", dates, key="s1_date")
+
+    # --- APPLICATION DES FILTRES ---
+    df_filtered = df_data.copy()
+    if sel_mag != 'Tous': df_filtered = df_filtered[df_filtered['Magasin'] == sel_mag]
+    if sel_fourn != 'Tous': df_filtered = df_filtered[df_filtered['Fournisseur'] == sel_fourn]
+    if sel_date != 'Tous': df_filtered = df_filtered[df_filtered['Livré le'].astype(str) == sel_date]
+
+    st.subheader(f"Visualisation des Réceptions (Lecture Seule) : {len(df_filtered)}")
+        
+    display_data_editor(df_filtered, STEP_1_VIEW_COLUMNS, [])
 
 
 def step_2_transport(df_data):
@@ -593,7 +610,7 @@ def step_3_deballage(df_data):
         st.subheader(f"Commandes : {len(df_filtered)}")
     with c_btn:
         if st.button("💾 Enregistrer", key="btn_save_s3"):
-            save_data_to_gsheet(edited_df, st.session_state['df_filtered_pre_edit'], st.session_state['column_headers'])
+            save_data_to_gsheet(None, st.session_state['df_filtered_pre_edit'], st.session_state['column_headers'])
     
     edited_df = display_data_editor(df_filtered, STEP_3_VIEW_COLUMNS, STEP_3_EDITABLE)
     display_details(df_filtered, STEP_3_VIEW_COLUMNS)
@@ -658,7 +675,9 @@ def step5_pdc_saisie(column_headers):
                 acheteur = st.text_input("Acheteur")
             with c2:
                 mail_acheteur = st.text_input("Mail Acheteur")
-                date_relance = st.date_input("Date Relance", None)
+                # On utilise None comme valeur par défaut pour permettre de ne pas saisir de date
+                date_relance_default = datetime.now().date() 
+                date_relance = st.date_input("Date Relance", value=None) 
                 nb_relance = st.number_input("Nombre de relance", min_value=0, step=1)
             
             if st.form_submit_button("Ajouter PDC"):
