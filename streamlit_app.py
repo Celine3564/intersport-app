@@ -27,8 +27,8 @@ APP_MANUAL_COLUMNS = [
     'StatutLivraison', 
     'NomTransporteur', 'Emplacement', 'NbPalettes', 'Poids_total', 
     'Commentaire_Livraison', 'LitigeReception', 'Colis_manquant/abimé/ouvert',
-    'NomDeballage', 'DateDebutDeballage', 'LitigesDeballe', 'Commentaire_litige',
-    'PDC', 'AcheteurPDC'
+    'NomDeballage', 'DateDebutDeballage', 'LitigesDeballe', 'Commentaire_litige'
+    
 ]
 
 # --- DEFINITION DES VUES ---
@@ -36,7 +36,7 @@ APP_MANUAL_COLUMNS = [
 # Étape 1 : Affichage Uniquement
 STEP_1_VIEW_COLUMNS = [
     KEY_COLUMN, 'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
-    'Livré le', 'Qté', 'Collection', 'StatutLivraison', 'PDC', 'AcheteurPDC'
+    'Livré le', 'Qté', 'Collection', 'StatutLivraison'
 ]
 
 # Étape 2 : Saisie Transport
