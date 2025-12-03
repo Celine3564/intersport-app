@@ -252,7 +252,7 @@ def upload_new_receptions(uploaded_file, column_headers):
         
         st.success(f"✅ {len(data_to_append)} nouvelle(s) réception(s) importée(s) avec succès dans la Google Sheet!")
         
-        # --- NOUVEAU : Vider l'uploader après l'importation réussie ---
+        # Vider l'uploader après l'importation réussie
         if 'uploader_key' in st.session_state:
             st.session_state.uploader_key += 1 # Incrémente la clé pour forcer la réinitialisation du composant
         
@@ -346,15 +346,14 @@ def main():
     )
 
     # 5. Affichage des détails de la ligne sélectionnée (Feature 1)
-    if df_filtered.empty:
-        # Ne pas essayer de lire la sélection si le DF est vide
-        pass
-    elif 'selection' in st.session_state["command_editor"] and st.session_state["command_editor"]["selection"]["rows"]:
+    
+    # Vérifie si le DataFrame n'est pas vide ET si une sélection a été faite
+    if not df_filtered.empty and 'selection' in st.session_state["command_editor"] and st.session_state["command_editor"]["selection"]["rows"]:
         
         selected_index = st.session_state["command_editor"]["selection"]["rows"][0]
         
-        # VÉRIFICATION DE SÉCURITÉ : Assure que l'index sélectionné est dans les limites du DataFrame actuel
-        if selected_index < len(df_filtered):
+        try:
+            # Tente d'accéder à la ligne. Si l'index est hors limites (à cause d'un filtre), une IndexError sera levée.
             selected_row_data = df_filtered.iloc[selected_index]
 
             st.divider()
@@ -376,6 +375,12 @@ def main():
                     detail_cols[col_index % 4].metric(col_name, value if value else "Non spécifié")
                 col_index += 1
             st.divider()
+
+        except IndexError:
+            # Gestion silencieuse de l'erreur d'indexation causée par le changement de filtre
+            # On n'affiche rien ou on met un message d'info, mais l'app ne crashe pas.
+            st.info("Détails non affichés : La sélection précédente a été réinitialisée après l'application du filtre.")
+            pass
 
 
     # 7. Bouton de Rafraîchissement et Sauvegarde
