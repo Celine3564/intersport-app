@@ -368,7 +368,7 @@ def load_non_saisie_data():
         # S'assurer que les colonnes nécessaires existent
         df = df.reindex(columns=PENDING_BL_COLUMNS)
         
-        # ⚠️ FIX pour la StreamlitAPIException: Assurer que la colonne de date est de type datetime
+        # FIX pour la StreamlitAPIException: Assurer que la colonne de date est de type datetime
         if 'DateReceptionPhysique' in df.columns:
             # Convertir la colonne en datetime. 'errors=coerce' tourne les dates invalides en NaT.
             df['DateReceptionPhysique'] = pd.to_datetime(df['DateReceptionPhysique'], errors='coerce')
@@ -398,6 +398,7 @@ def save_pending_bl_updates(df_current, deleted_rows):
         worksheet = sh.worksheet(PENDING_BL_WORKSHEET_NAME)
         
         # Créer le DataFrame final à sauvegarder en retirant les lignes supprimées
+        # deleted_rows contient les index du df_pending initial.
         df_final = df_current.drop(deleted_rows).reset_index(drop=True)
 
         # Convertir les colonnes datetime en chaînes de caractères (format YYYY-MM-DD)
@@ -612,28 +613,29 @@ def step_4_non_saisie():
         key="pending_bl_editor",
         use_container_width=True,
         hide_index=False,
-        num_rows="fixed",
+        num_rows="dynamic", # ⬅️ CHANGEMENT ICI pour activer la sélection et l'icône poubelle
         column_order=PENDING_BL_COLUMNS,
         column_config={
             # Ces colonnes doivent être de type string dans le DF, ce qui est assuré
             'Fournisseur': st.column_config.TextColumn('Fournisseur', disabled=True),
             'NuméroBL': st.column_config.TextColumn('Numéro BL', disabled=True),
-            # ⚠️ FIX : La colonne doit être de type datetime64 dans le DF pour utiliser DatetimeColumn
+            # La colonne est bien de type datetime64 dans le DF grâce au FIX
             'DateReceptionPhysique': st.column_config.DatetimeColumn('Date Réception Physique', format="YYYY-MM-DD", disabled=True), 
             'Statut': st.column_config.TextColumn('Statut', disabled=True)
         }
     )
     
     # Bouton de confirmation de suppression (après saisie informatique)
+    # On récupère les index des lignes que l'utilisateur a supprimées via l'icône poubelle native
     deleted_rows_indices = st.session_state["pending_bl_editor"].get("deleted_rows", [])
 
-    if len(deleted_rows_indices) > 0:
+    if deleted_rows_indices:
         st.warning(f"Vous avez marqué {len(deleted_rows_indices)} BL(s) comme **saisi(s)** dans le système.")
         if st.button(f"🗑️ Confirmer la suppression de {len(deleted_rows_indices)} BL(s)"):
             # L'index renvoyé par deleted_rows est l'index dans le DF original (df_pending)
             save_pending_bl_updates(df_pending, deleted_rows_indices)
     else:
-        st.info("Cochez la ou les lignes des BLs qui ont été saisies dans le système, puis cliquez sur le bouton de suppression (icône poubelle).")
+        st.info("Sélectionnez la ou les lignes que vous avez saisies dans le système, puis cliquez sur l'icône poubelle (🗑️) pour les supprimer du suivi.")
 
 
 def display_details(df_filtered, editable_cols):
