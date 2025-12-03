@@ -73,6 +73,7 @@ def authenticate_gsheet():
 def load_data_from_gsheet():
     """ 
     Lit la Google Sheet, filtre les commandes ouvertes et les colonnes de la vue application.
+    Garantit que les colonnes manuelles sont du type str.
     """
     try:
         gc = authenticate_gsheet()
@@ -101,11 +102,20 @@ def load_data_from_gsheet():
         df_full[KEY_COLUMN] = df_full[KEY_COLUMN].astype(str).str.strip()
         df_full['Clôturé'] = df_full['Clôturé'].astype(str).str.strip().str.upper()
 
+        # --- NOUVEAU : Garantir que toutes les colonnes manuelles sont de type string ---
+        for col in APP_MANUAL_COLUMNS:
+            if col in df_full.columns:
+                df_full[col] = df_full[col].fillna('').astype(str).str.strip()
+            # Si la colonne est manquante, elle sera ajoutée à vide plus tard.
+
         # Filtrage des commandes NON Clôturées
         df_open = df_full[df_full['Clôturé'] != 'OUI'].copy()
         
         # Filtrage des colonnes pour la vue App
         df_app_view = df_open.reindex(columns=APP_VIEW_COLUMNS)
+        
+        # Remplir les NaN/None dans les colonnes d'édition avec des chaînes vides
+        df_app_view[APP_MANUAL_COLUMNS] = df_app_view[APP_MANUAL_COLUMNS].fillna('')
         
         df_app_view = df_app_view.sort_values(by=KEY_COLUMN, ascending=True).reset_index(drop=True)
         
@@ -334,8 +344,9 @@ def main():
     }
     
     # Éditeur de données
+    # J'ai ajouté un `pd.DataFrame` autour de `df_filtered` pour m'assurer que l'objet passé est bien un DataFrame valide
     edited_df = st.data_editor(
-        df_filtered,
+        pd.DataFrame(df_filtered), # Encapsulation pour garantir le type
         key="command_editor",
         height=500,
         use_container_width=True,
@@ -358,13 +369,17 @@ def main():
         
         try:
             # 1. Récupérer le NuméroAuto (clé unique) de la ligne sélectionnée dans le DF filtré ACTUEL
-            # Si l'index est valide dans le DF ACTUEL, nous continuons. 
-            # Sinon, cette ligne lève l'IndexError que nous allons gérer.
             key_value = df_filtered.iloc[selected_index_in_filtered_df][KEY_COLUMN]
             
-            # 2. Utiliser la clé unique pour récupérer la ligne complète dans le DF filtré (ce qui est redondant mais sécurise l'accès)
-            # Cette étape est principalement pour s'assurer que nous avons une ligne DataFrame valide.
-            selected_row_data = df_filtered[df_filtered[KEY_COLUMN] == key_value].iloc[0]
+            # 2. Utiliser la clé unique pour récupérer la ligne complète dans le DF filtré
+            # S'assurer que la ligne existe toujours dans le DF filtré avant d'essayer de l'accéder.
+            row_match = df_filtered[df_filtered[KEY_COLUMN] == key_value]
+            
+            if row_match.empty:
+                 # Gère le cas où l'élément sélectionné n'est plus dans le DF après un changement de filtre
+                 raise IndexError("Selected row not found after filter change.")
+                 
+            selected_row_data = row_match.iloc[0]
             
             st.divider()
             st.markdown("### 🔎 Détails de la Commande Sélectionnée")
@@ -387,8 +402,7 @@ def main():
             st.divider()
 
         except IndexError:
-            # Si l'IndexError est levée (parce que l'index sélectionné n'existe plus après l'application d'un nouveau filtre),
-            # nous gérons l'erreur et n'affichons rien (ou un message d'information).
+            # Si l'IndexError est levée (problème d'index/filtre), on gère silencieusement.
             st.info("Détails non affichés : La sélection précédente a été perdue suite à l'application du filtre ou au rechargement des données.")
         except Exception as e:
             # Gestion d'autres erreurs potentielles (juste au cas où)
