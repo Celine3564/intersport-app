@@ -1,14 +1,18 @@
 import pandas as pd
 import gspread
 import streamlit as st
+import time
 import io 
 
 # --- 1. CONFIGURATION ET CONSTANTES ---
 
+# --- CONSTANTES GSPREAD ---
 # L'ID unique de votre feuille Google
 SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk' 
 # Le nom exact de l'onglet/feuille à l'intérieur du document
 WORKSHEET_NAME = 'DATA' 
+
+# --- DEFINITION DES COLONNES ---
 
 # Colonnes de l'Application (Données saisies manuellement par les utilisateurs)
 APP_MANUAL_COLUMNS = [
@@ -26,16 +30,24 @@ ESSENTIAL_EXCEL_COLUMNS = ['Magasin', 'Fournisseur', 'Mt HT']
 APP_VIEW_COLUMNS = ['NuméroAuto'] + ESSENTIAL_EXCEL_COLUMNS + APP_MANUAL_COLUMNS
 
 KEY_COLUMN = 'NuméroAuto'
+# Colonnes requises pour le fichier d'importation de nouvelles réceptions (minimum)
+IMPORT_REQUIRED_COLUMNS = [KEY_COLUMN, 'Magasin', 'Fournisseur', 'Mt HT'] 
 # Liste de toutes les colonnes de la feuille (y compris Clôturé)
 SHEET_REQUIRED_COLUMNS = [col.strip() for col in APP_VIEW_COLUMNS + ['Clôturé']]
 
 
-# --- 2. FONCTION D'AUTHENTIFICATION ---
+# --- 2. FONCTION D'AUTHENTIFICATION (réutilisée pour la lecture et l'écriture) ---
 def authenticate_gsheet():
     """Authentifie et retourne l'objet gspread Client."""
     secrets_immutable = st.secrets['gspread']
     creds_for_auth = dict(secrets_immutable)
     
+    # Champs requis pour l'authentification JWT
+    REQUIRED_KEYS = ['private_key', 'client_email', 'project_id', 'type']
+    for key in REQUIRED_KEYS:
+        if key not in creds_for_auth or not creds_for_auth[key]:
+            raise ValueError(f"Erreur de configuration : Le secret '{key}' est manquant ou vide.")
+
     # Nettoyage de la clé privée
     private_key_value = str(creds_for_auth['private_key']).strip()
     cleaned_private_key = private_key_value.replace('\\n', '\n')
@@ -65,11 +77,17 @@ def load_data_from_gsheet():
     """
     try:
         gc = authenticate_gsheet()
+        
         sh = gc.open_by_key(SHEET_ID)
         worksheet = sh.worksheet(WORKSHEET_NAME)
         
+        # Lecture de toutes les données
         with st.spinner('Chargement des données de Google Sheets...'):
+            # Utilisation de get_all_records pour le DataFrame
             df_full = pd.DataFrame(worksheet.get_all_records())
+            # Utilisation de get_all_values pour les en-têtes (nécessaire pour la sauvegarde et l'import)
+            sheet_values = worksheet.get_all_values()
+            column_headers = sheet_values[0] if sheet_values else []
 
         # Nettoyage et typage des colonnes
         df_full.columns = df_full.columns.str.strip()
@@ -79,12 +97,12 @@ def load_data_from_gsheet():
         for col in required_cols:
             if col not in df_full.columns:
                  st.error(f"Colonne essentielle '{col}' manquante dans la Google Sheet.")
-                 return pd.DataFrame() # Retourne un DataFrame vide
+                 return pd.DataFrame(), []
         
         df_full[KEY_COLUMN] = df_full[KEY_COLUMN].astype(str).str.strip()
         df_full['Clôturé'] = df_full['Clôturé'].astype(str).str.strip().str.upper()
 
-        # Garantir que toutes les colonnes manuelles sont de type string
+        # --- NOUVEAU : Garantir que toutes les colonnes manuelles sont de type string ---
         for col in APP_MANUAL_COLUMNS:
             if col in df_full.columns:
                 df_full[col] = df_full[col].fillna('').astype(str).str.strip()
@@ -102,105 +120,311 @@ def load_data_from_gsheet():
         df_app_view = df_app_view.sort_values(by=KEY_COLUMN, ascending=True).reset_index(drop=True)
         
         st.success(f"Données chargées : {len(df_app_view)} commandes ouvertes prêtes.")
-        # Retourne uniquement le DataFrame filtré
-        return df_app_view
+        # Retourne le DataFrame et les en-têtes du sheet pour la sauvegarde
+        return df_app_view, column_headers
 
     except ValueError as e:
+        # Erreur spécifique de configuration
         st.error(f"Erreur de configuration : {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(), []
     except KeyError:
+        # Erreur si la section [gspread] manque
         st.error("Erreur de configuration : Le secret Streamlit `gspread` est manquant. Veuillez le configurer dans les paramètres de l'application.")
-        return pd.DataFrame()
+        return pd.DataFrame(), []
     except Exception as e:
+        # Erreur finale de connexion/permission
         st.error(f"Erreur de connexion/lecture. Le problème est lié aux PERMISSIONS de la Google Sheet. Erreur: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(), []
 
-# --- 4. LOGIQUE ET AFFICHAGE STREAMLIT ---
-def main():
-    st.set_page_config(
-        page_title="Suivi des Commandes (Lecture Seule)",
-        layout="wide",
-        initial_sidebar_state="collapsed"
-    )
+# --- 4. FONCTION DE SAUVEGARDE DES DONNÉES EXISTANTES ---
+def save_data_to_gsheet(edited_df, df_filtered_pre_edit, column_headers):
+    """
+    Sauvegarde les données éditées par l'utilisateur dans la Google Sheet.
+    """
+    try:
+        gc = authenticate_gsheet()
+        sh = gc.open_by_key(SHEET_ID)
+        worksheet = sh.worksheet(WORKSHEET_NAME)
+        
+        # Récupération des changements de l'éditeur Streamlit
+        edited_rows = st.session_state["command_editor"]["edited_rows"]
+        
+        if not edited_rows:
+            st.warning("Aucune modification détectée dans le tableau.")
+            return
 
-    st.title("📦 Suivi des Commandes Ouvertes (Version Basique)")
-    st.caption("Affiche les commandes NON Clôturées de la Google Sheet. L'édition est possible dans le tableau, mais les **modifications NE SONT PAS SAUVEGARDÉES** dans cette version simplifiée.")
+        updates = []
+        
+        # 1. Créer un mappage Colonne -> Index (1-basé)
+        col_to_index = {header.strip(): i + 1 for i, header in enumerate(column_headers)}
+        
+        # 2. Trouver l'index de la colonne clé dans la feuille (pour la recherche)
+        key_col_index = col_to_index.get(KEY_COLUMN)
+        if not key_col_index:
+            st.error(f"Colonne clé '{KEY_COLUMN}' introuvable dans la feuille Google. Sauvegarde annulée.")
+            return
 
-    # 1. Chargement des données (avec mise en cache)
-    df_data = load_data_from_gsheet()
-    
-    if df_data.empty:
-        st.info("Aucune donnée n'a été chargée. Veuillez vérifier la connexion ou l'existence de commandes ouvertes.")
+        # 3. Traiter chaque ligne modifiée
+        for filtered_index, changes in edited_rows.items():
+            
+            # Récupérer la valeur unique de la clé (NuméroAuto) dans le tableau pré-édité
+            # C'est la ligne correcte car elle est basée sur le DF affiché juste avant l'édition.
+            key_value = df_filtered_pre_edit.iloc[filtered_index][KEY_COLUMN]
+            
+            # 4. Trouver la ligne physique dans la Google Sheet
+            # La recherche se fait uniquement dans la colonne KEY_COLUMN
+            cell = worksheet.find(str(key_value), in_column=key_col_index)
+            
+            if cell is None:
+                st.error(f"Clé '{key_value}' introuvable dans la Google Sheet. Ligne non sauvegardée.")
+                continue
+                
+            physical_row = cell.row
+            
+            # 5. Mettre à jour chaque colonne modifiée pour cette ligne
+            for col_name, new_value in changes.items():
+                
+                # Récupérer l'index de la colonne physique
+                col_index = col_to_index.get(col_name)
+                
+                if col_index is None:
+                    st.warning(f"La colonne '{col_name}' est gérée par Streamlit mais introuvable dans la Google Sheet. Ignorée.")
+                    continue
+                    
+                # Ajout de l'instruction de mise à jour à la liste
+                updates.append({
+                    'range': gspread.utils.rowcol_to_a1(physical_row, col_index),
+                    'values': [[str(new_value)]] # Les valeurs doivent être dans un format [[value]]
+                })
+
+        # 6. Exécuter toutes les mises à jour en une seule fois (Batch Update)
+        if updates:
+            worksheet.batch_update(updates)
+            st.success(f"💾 {len(edited_rows)} ligne(s) mise(s) à jour avec succès dans Google Sheet!")
+            
+            # 7. Nettoyer le cache et relancer l'application pour afficher les données actualisées
+            st.cache_data.clear()
+            st.rerun()
+
+    except Exception as e:
+        st.error(f"Erreur lors de la sauvegarde des données : {e}")
+
+# --- 5. FONCTION D'IMPORTATION DE NOUVELLES RÉCEPTIONS ---
+def upload_new_receptions(uploaded_file, column_headers):
+    """
+    Lit un fichier Excel et ajoute les nouvelles réceptions à la Google Sheet.
+    """
+    if uploaded_file is None:
         return
 
-    # 2. Affichage principal du tableau
-    st.subheader(f"Commandes Ouvertes ({len(df_data)})")
+    try:
+        # 1. Lecture du fichier Excel
+        df_new = pd.read_excel(uploaded_file, engine='openpyxl')
+        df_new.columns = df_new.columns.str.strip()
+        
+        # 2. Validation des colonnes
+        missing_cols = [col for col in IMPORT_REQUIRED_COLUMNS if col not in df_new.columns]
+        if missing_cols:
+            st.error(f"Le fichier Excel doit contenir les colonnes suivantes : {', '.join(IMPORT_REQUIRED_COLUMNS)}. Colonnes manquantes : {', '.join(missing_cols)}")
+            return
+            
+        # 3. Préparation des données pour l'insertion
+        df_insert = df_new.copy()
+        
+        # S'assurer que les colonnes existent et sont initialisées
+        for col in SHEET_REQUIRED_COLUMNS:
+            if col not in df_insert.columns:
+                if col == 'Clôturé':
+                    df_insert[col] = 'NON' # Nouvelle commande = NON Clôturée
+                else:
+                    # Initialisation des colonnes manuelles à vide
+                    df_insert[col] = '' 
+        
+        # S'assurer que l'ordre des colonnes correspond aux en-têtes de la feuille
+        df_insert = df_insert.reindex(columns=column_headers)
+        
+        # Remplacer les NaN par des chaînes vides pour gspread
+        df_insert = df_insert.fillna('').astype(str)
+        
+        # Conversion en liste de listes (lignes) pour l'insertion
+        data_to_append = df_insert.values.tolist()
+        
+        if not data_to_append:
+            st.warning("Le fichier Excel ne contient aucune donnée à importer.")
+            return
 
-    # Configuration des colonnes (pour désactiver les colonnes Excel de lecture seule)
+        # 4. Insertion dans Google Sheet
+        gc = authenticate_gsheet()
+        sh = gc.open_by_key(SHEET_ID)
+        worksheet = sh.worksheet(WORKSHEET_NAME)
+        
+        # Utilisation de append_rows pour ajouter à la fin
+        worksheet.append_rows(data_to_append, value_input_option='USER_ENTERED')
+        
+        st.success(f"✅ {len(data_to_append)} nouvelle(s) réception(s) importée(s) avec succès dans la Google Sheet!")
+        
+        # Vider l'uploader après l'importation réussie
+        if 'uploader_key' in st.session_state:
+            st.session_state.uploader_key += 1 # Incrémente la clé pour forcer la réinitialisation du composant
+        
+        # Nettoyer le cache et relancer pour afficher les nouvelles données
+        st.cache_data.clear()
+        st.rerun()
+
+    except Exception as e:
+        st.error(f"Erreur lors de l'importation du fichier Excel : {e}")
+        st.info("Veuillez vérifier que le fichier est au format Excel (.xlsx) et que toutes les colonnes requises sont présentes.")
+
+
+# --- 6. LOGIQUE ET AFFICHAGE STREAMLIT ---
+def main():
+    st.set_page_config(
+        page_title="Suivi des Commandes Ouvertes",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+
+    st.title("📦 Suivi des Commandes en Cours")
+    st.caption("Affiche les commandes NON Clôturées de la Google Sheet, prêtes pour la mise à jour manuelle.")
+
+    # Initialiser la clé de l'uploader pour permettre la réinitialisation après succès
+    if 'uploader_key' not in st.session_state:
+        st.session_state.uploader_key = 0
+
+    # 1. Chargement des données (avec mise en cache)
+    df_data, column_headers = load_data_from_gsheet()
+    
+    st.session_state['column_headers'] = column_headers
+
+    if df_data.empty:
+        st.info("Aucune donnée n'a été chargée. Veuillez vérifier la connexion ou l'existence de commandes ouvertes.")
+    
+    # --- SECTION IMPORTATION NOUVELLES RÉCEPTIONS (Feature 2) ---
+    with st.sidebar.expander("Importer de Nouvelles Réceptions", expanded=False):
+        st.caption("Fichier requis : Excel (.xlsx) avec au moins les colonnes 'NuméroAuto', 'Magasin', 'Fournisseur', 'Mt HT'.")
+        uploaded_file = st.file_uploader(
+            "Sélectionner un fichier Excel", 
+            type=['xlsx'],
+            key=f"file_uploader_{st.session_state.uploader_key}" # Utilise la clé pour la réinitialisation
+        )
+        if uploaded_file is not None and st.button("🚀 Importer les données"):
+            upload_new_receptions(uploaded_file, column_headers)
+            
+    # 2. Sélecteurs et Barres de filtre (Sidebar)
+    st.sidebar.header("Filtres")
+    
+    # Filtre sur la colonne Magasin
+    magasins = ['Tous'] + sorted(df_data['Magasin'].unique().tolist())
+    selected_magasin = st.sidebar.selectbox("Filtrer par Magasin:", magasins)
+
+    # Filtre sur la colonne StatutLivraison
+    statuts = ['Tous'] + sorted(df_data['StatutLivraison'].unique().tolist())
+    selected_statut = st.sidebar.selectbox("Filtrer par Statut Livraison:", statuts)
+
+    # 3. Application des filtres
+    df_filtered = df_data.copy()
+
+    if selected_magasin != 'Tous':
+        df_filtered = df_filtered[df_filtered['Magasin'] == selected_magasin]
+
+    if selected_statut != 'Tous':
+        df_filtered = df_filtered[df_filtered['StatutLivraison'].astype(str).str.strip() == selected_statut.strip()]
+        
+    st.session_state['df_filtered_pre_edit'] = df_filtered.copy()
+
+    # 4. Affichage des résultats
+    st.subheader(f"Commandes Ouvertes Filtrées ({len(df_filtered)} / {len(df_data)})")
+
+    # Configuration des colonnes (pour rendre les colonnes Excel non éditables)
     column_configs = {
         col: st.column_config.Column(
             col,
-            disabled=(col not in APP_MANUAL_COLUMNS)
+            disabled=(col not in APP_MANUAL_COLUMNS) # Désactive l'édition si ce n'est pas une colonne manuelle
         ) for col in APP_VIEW_COLUMNS
     }
     
     # Éditeur de données
-    # Le key "command_editor" est réintroduit pour capter la sélection.
-    # on_select="rerun" a été explicitement retiré.
+    # J'ai ajouté un `pd.DataFrame` autour de `df_filtered` pour m'assurer que l'objet passé est bien un DataFrame valide
     edited_df = st.data_editor(
-        df_data,
-        key="command_editor", # Réintroduit le key pour capter la sélection
+        pd.DataFrame(df_filtered), # Encapsulation pour garantir le type
+        key="command_editor",
         height=500,
         use_container_width=True,
         hide_index=True,
         column_order=APP_VIEW_COLUMNS,
         column_config=column_configs,
-        # IMPORTANT : L'édition est permise mais les données éditées NE SONT PAS utilisées ni sauvegardées.
+        # Ajout de la sélection de ligne pour la fonctionnalité de détails
+        on_select="rerun" # On relance l'app pour afficher les détails immédiatement
     )
 
-    # --- 3. Affichage des détails de la ligne sélectionnée ---
+    # 5. Affichage des détails de la ligne sélectionnée (Feature 1)
     
     # Vérifie si la sélection est présente et non vide
-    selection_state = st.session_state.get("command_editor", {}).get("selection", {})
-    selected_rows_indices = selection_state.get("rows", [])
+    # selection_state = st.session_state.get("command_editor", {}).get("selection", {})
+    # selected_rows_indices = selection_state.get("rows", [])
     
-    if selected_rows_indices:
-        # Récupère l'index de la ligne sélectionnée dans le DF affiché
-        selected_index = selected_rows_indices[0]
+   #  if selected_rows_indices:
+        # Récupère l'index de la ligne sélectionnée dans le DF filtré (c'est l'index qui est potentiellement problématique)
+        # selected_index_in_filtered_df = selected_rows_indices[0]
         
-        try:
-            # Accès direct à la ligne puisque l'application n'a pas de filtres
-            selected_row_data = df_data.iloc[selected_index]
+        # try:
+            # 1. Récupérer le NuméroAuto (clé unique) de la ligne sélectionnée dans le DF filtré ACTUEL
+            # key_value = df_filtered.iloc[selected_index_in_filtered_df][KEY_COLUMN]
             
-            st.divider()
-            st.markdown("### 🔎 Détails de la Commande Sélectionnée")
+            # 2. Utiliser la clé unique pour récupérer la ligne complète dans le DF filtré
+            # S'assurer que la ligne existe toujours dans le DF filtré avant d'essayer de l'accéder.
+            # row_match = df_filtered[df_filtered[KEY_COLUMN] == key_value]
+            
+            # if row_match.empty:
+                 # Gère le cas où l'élément sélectionné n'est plus dans le DF après un changement de filtre
+            #      raise IndexError("Selected row not found after filter change.")
+                 
+           #  selected_row_data = row_match.iloc[0]
+            
+            # st.divider()
+            # st.markdown("### 🔎 Détails de la Commande Sélectionnée")
             
             # Utilisation de colonnes pour une meilleure mise en page
-            detail_cols = st.columns(4)
-            col_index = 0
+           #  detail_cols = st.columns(4)
+           #  col_index = 0
             
             # Affichage des informations
-            for col_name in APP_VIEW_COLUMNS:
-                value = selected_row_data.get(col_name, "N/A")
+           #  for col_name in APP_VIEW_COLUMNS:
+            #     value = selected_row_data.get(col_name, "N/A")
                 
-                if col_name in ['Commentaire_Livraison', 'Commentaire_litige']:
+            #     if col_name in ['Commentaire_Livraison', 'Commentaire_litige']:
                     # Utilisation de st.markdown pour les champs de commentaires longs
-                    detail_cols[col_index % 4].markdown(f"**{col_name} :** {value if value else 'Non spécifié'}")
-                else:
+            #         detail_cols[col_index % 4].markdown(f"**{col_name} :** {value if value else 'Non spécifié'}")
+            #     else:
                     # Utilisation de st.metric pour les autres champs (plus compact)
-                    detail_cols[col_index % 4].metric(col_name, value if value else "Non spécifié")
-                col_index += 1
-            st.divider()
+             #        detail_cols[col_index % 4].metric(col_name, value if value else "Non spécifié")
+            #     col_index += 1
+          #   st.divider()
 
-        except IndexError:
-            st.info("Détails non affichés : Index de ligne invalide (sélection perdue).")
-        except Exception as e:
-            st.error(f"Erreur inattendue lors de l'affichage des détails : {e}")
+       #  except IndexError:
+            # Si l'IndexError est levée (problème d'index/filtre), on gère silencieusement.
+         #    st.info("Détails non affichés : La sélection précédente a été perdue suite à l'application du filtre ou au rechargement des données.")
+     #    except Exception as e:
+            # Gestion d'autres erreurs potentielles (juste au cas où)
+          #   st.error(f"Erreur inattendue lors de l'affichage des détails : {e}")
 
-    # --- 4. Bouton de Rafraîchissement seulement ---
-    if st.button("🔄 Rafraîchir les données depuis Google Sheet"):
-        st.cache_data.clear()
-        st.rerun() 
+
+    # 7. Bouton de Rafraîchissement et Sauvegarde
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("🔄 Rafraîchir les données"):
+            st.cache_data.clear()
+            st.rerun() 
+            
+    with col2:
+        if st.button("💾 Enregistrer les modifications"):
+            # Passer le DataFrame édité, la version d'avant édition pour le mapping, et les en-têtes
+            save_data_to_gsheet(
+                edited_df, 
+                st.session_state['df_filtered_pre_edit'], 
+                st.session_state['column_headers']
+            )
+            # Rerun est déjà dans save_data_to_gsheet
 
 if __name__ == '__main__':
     main()
