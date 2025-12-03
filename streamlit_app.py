@@ -339,7 +339,7 @@ def add_new_pdc_reception(magasin, fournisseur, mt_ht, acheteur_pdc, date_livrai
         st.error(f"Erreur lors de la saisie manuelle : {e}")
 
 
-# --- NOUVELLES FONCTIONS POUR L'Étape 4 : Marchandise Non Saisie ---
+# --- FONCTIONS POUR L'Étape 4 : Marchandise Non Saisie ---
 
 @st.cache_data(ttl=60)
 def load_non_saisie_data():
@@ -455,29 +455,12 @@ def add_pending_bl(fournisseur, numero_bl):
 # --- 3. FONCTIONS D'AFFICHAGE DES ÉTAPES ---
 
 def step_1_reception(df_data, column_headers):
-    """ Étape 1 : Import ou Saisie Réception. """
-    st.header("1️⃣ Import ou Saisie Réception")
-    st.caption("Cette étape sert à ajouter de nouvelles commandes via un fichier ou manuellement (PDC).")
-
-    # --- Saisie Manuelle PDC ---
-    with st.expander("➕ Saisie Manuelle PDC (Commande Ponctuelle)", expanded=True):
-        col_form_1, col_form_2, col_form_3 = st.columns(3)
-        with col_form_1:
-            magasin = st.text_input("Magasin (Code)", max_chars=10)
-            fournisseur = st.text_input("Fournisseur", max_chars=50)
-        with col_form_2:
-            mt_ht = st.number_input("Montant HT (€)", min_value=0.0, step=0.01, format="%.2f")
-            acheteur_pdc = st.text_input("Acheteur PDC", max_chars=50)
-        with col_form_3:
-            date_livraison = st.date_input("Date de Livraison Estimée", datetime.now())
-            st.markdown("<br>", unsafe_allow_html=True) # Espace pour alignement
-            if st.button("Valider la Saisie PDC", disabled=not (magasin and fournisseur and acheteur_pdc)):
-                add_new_pdc_reception(magasin, fournisseur, mt_ht, acheteur_pdc, date_livraison, column_headers)
+    """ Étape 1 : Import de Nouvelles Réceptions. (Saisie Manuelle PDC déplacée vers l'étape 5)"""
+    st.header("1️⃣ Import de Nouvelles Réceptions")
+    st.caption("Cette étape sert à ajouter de nouvelles commandes via un fichier Excel.")
     
-    st.markdown("---")
-    
-    # --- Importation (Déplacé ici) ---
-    with st.expander("📥 Import de Nouvelles Réceptions (Fichier Excel)", expanded=False):
+    # --- Importation ---
+    with st.expander("📥 Import de Nouvelles Réceptions (Fichier Excel)", expanded=True):
         st.caption(f"Fichier requis : Excel (.xlsx) avec au moins les colonnes : {', '.join(IMPORT_REQUIRED_COLUMNS)}.")
         st.warning("⚠️ Attention : Un contrôle de doublons est effectué sur la colonne 'NuméroAuto'. Les doublons ne seront pas importés.")
         uploaded_file = st.file_uploader(
@@ -639,6 +622,29 @@ def step_4_non_saisie():
         st.info("Sélectionnez la ou les lignes que vous avez saisies dans le système, puis cliquez sur l'icône poubelle (🗑️) pour les supprimer du suivi.")
 
 
+def step5_pdc_saisie(column_headers):
+    """ Nouvelle Étape 5 : Saisie Manuelle PDC (Commande Ponctuelle). """
+    st.header("5️⃣ Saisie Manuelle PDC (Commande Ponctuelle)")
+    st.caption("Ajoutez ici les commandes PDC qui ne passent pas par l'import de masse.")
+
+    with st.expander("➕ Formulaire de Saisie PDC", expanded=True):
+        with st.form("pdc_form"):
+            col_form_1, col_form_2, col_form_3 = st.columns(3)
+            with col_form_1:
+                magasin = st.text_input("Magasin (Code)", max_chars=10)
+                fournisseur = st.text_input("Fournisseur", max_chars=50)
+            with col_form_2:
+                mt_ht = st.number_input("Montant HT (€)", min_value=0.0, step=0.01, format="%.2f")
+                acheteur_pdc = st.text_input("Acheteur PDC", max_chars=50)
+            with col_form_3:
+                date_livraison = st.date_input("Date de Livraison Estimée", datetime.now())
+                
+            submitted = st.form_submit_button("Valider la Saisie PDC", disabled=not (magasin and fournisseur and acheteur_pdc))
+            
+            if submitted:
+                add_new_pdc_reception(magasin, fournisseur, mt_ht, acheteur_pdc, date_livraison, column_headers)
+
+
 def display_details(df_filtered, editable_cols):
     """ Fonction utilitaire pour afficher les détails de la ligne sélectionnée. """
     selection_state = st.session_state.get("command_editor", {}).get("selection", {})
@@ -702,14 +708,16 @@ def main():
         st.title("Navigation App")
         if st.button("🏠 Accueil", key="nav_home"):
             st.session_state.current_step = 'home'
-        if st.button("1️⃣ Import / Saisie Réception", key="nav_step1"):
+        if st.button("1️⃣ Import Réception", key="nav_step1"):
             st.session_state.current_step = 'step1'
         if st.button("2️⃣ Saisie Info Transport", key="nav_step2"):
             st.session_state.current_step = 'step2'
         if st.button("3️⃣ Saisie Déballage", key="nav_step3"):
             st.session_state.current_step = 'step3'
-        if st.button("4️⃣ Marchandise non saisie", key="nav_step4"): # NOUVEAU
+        if st.button("4️⃣ Marchandise non saisie (BLs)", key="nav_step4"):
             st.session_state.current_step = 'step4'
+        if st.button("5️⃣ Saisie Manuelle PDC", key="nav_step5"): # NOUVEAU
+            st.session_state.current_step = 'step5'
         
         st.markdown("---")
         if st.button("🔄 Rafraîchir les données", key="refresh_data_side"):
@@ -719,7 +727,7 @@ def main():
             st.rerun() 
             
     # Si les données ne sont pas chargées, afficher un message et empêcher la navigation
-    if df_data.empty and st.session_state.current_step not in ['home', 'step4']:
+    if df_data.empty and st.session_state.current_step not in ['home', 'step1', 'step4', 'step5']:
         st.error("Veuillez rafraîchir ou importer des données pour commencer.")
         st.session_state.current_step = 'home'
 
@@ -732,7 +740,7 @@ def main():
         col_home1, col_home2, col_home3 = st.columns(3)
         
         with col_home1:
-            if st.button("Étape 1: Import / Saisie Réception", use_container_width=True, help="Ajouter de nouvelles commandes au suivi."):
+            if st.button("Étape 1: Import Réception", use_container_width=True, help="Ajouter de nouvelles commandes au suivi via fichier."):
                  st.session_state.current_step = 'step1'
                  st.rerun()
         with col_home2:
@@ -745,9 +753,15 @@ def main():
                  st.rerun()
         
         st.markdown("---")
-        if st.button("Étape 4: Marchandise non saisie", use_container_width=True, help="Suivi quotidien des Bons de Livraison reçus physiquement."):
-            st.session_state.current_step = 'step4'
-            st.rerun()
+        col_home4, col_home5 = st.columns(2)
+        with col_home4:
+            if st.button("Étape 4: Marchandise non saisie", use_container_width=True, help="Suivi quotidien des Bons de Livraison reçus physiquement."):
+                st.session_state.current_step = 'step4'
+                st.rerun()
+        with col_home5:
+            if st.button("Étape 5: Saisie Manuelle PDC", use_container_width=True, help="Ajouter une commande Ponctuelle (PDC) manuellement."):
+                st.session_state.current_step = 'step5'
+                st.rerun()
             
         st.info(f"Commandes Ouvertes Actuellement : **{len(df_data)}**")
         
@@ -762,6 +776,9 @@ def main():
 
     elif st.session_state.current_step == 'step4':
         step_4_non_saisie()
+        
+    elif st.session_state.current_step == 'step5':
+        step5_pdc_saisie(column_headers)
 
 
 if __name__ == '__main__':
