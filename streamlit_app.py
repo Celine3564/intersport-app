@@ -45,7 +45,8 @@ IMPORT_REQUIRED_COLUMNS = [KEY_COLUMN, 'Magasin', 'Fournisseur', 'Mt HT']
 SHEET_REQUIRED_COLUMNS = APP_VIEW_COLUMNS + ['Clôturé']
 
 
-# --- 2. FONCTION D'AUTHENTIFICATION (réutilisée pour la lecture et l'écriture) ---
+# --- 2. FONCTIONS DE GESTION GOOGLE SHEET ---
+
 def authenticate_gsheet():
     """Authentifie et retourne l'objet gspread Client."""
     secrets_immutable = st.secrets['gspread']
@@ -73,7 +74,6 @@ def authenticate_gsheet():
     
     return gspread.service_account_from_dict(json_key_content)
 
-# --- 3. FONCTION DE LECTURE FILTRÉE DES DONNÉES ---
 @st.cache_data(ttl=600) 
 def load_data_from_gsheet():
     """ 
@@ -127,7 +127,30 @@ def load_data_from_gsheet():
         st.error(f"Erreur de chargement. Vérifiez les secrets/permissions. Erreur: {e}")
         return pd.DataFrame(), []
 
-# --- 4. FONCTION UTILITAIRE DE SAUVEGARDE DES DONNÉES EXISTANTES ---
+@st.cache_data(ttl=300)
+def get_all_existing_ids(column_headers):
+    """ Récupère tous les NuméroAuto existants dans la Google Sheet (même Clôturés). """
+    try:
+        gc = authenticate_gsheet()
+        sh = gc.open_by_key(SHEET_ID)
+        worksheet = sh.worksheet(WORKSHEET_NAME)
+
+        try:
+            # Trouver l'index de la colonne clé
+            key_col_index = column_headers.index(KEY_COLUMN) + 1 
+        except ValueError:
+            # Si on ne trouve pas, on utilise la colonne A (1) par défaut, mais une erreur est plus sûre
+            st.error(f"Colonne essentielle '{KEY_COLUMN}' introuvable dans la Google Sheet pour la vérification des IDs.")
+            return set()
+
+        # Récupérer toutes les valeurs de cette colonne (sauter la ligne d'en-tête)
+        all_ids = worksheet.col_values(key_col_index)[1:] 
+        return set(str(id).strip() for id in all_ids if id)
+        
+    except Exception as e:
+        st.error(f"Erreur lors de la récupération des IDs existants: {e}")
+        return set()
+
 def save_data_to_gsheet(edited_df, df_filtered_pre_edit, column_headers):
     """
     Sauvegarde les données éditées par l'utilisateur dans la Google Sheet via batch_update.
@@ -185,15 +208,16 @@ def save_data_to_gsheet(edited_df, df_filtered_pre_edit, column_headers):
             
             # Nettoyage et relance
             st.cache_data.clear()
+            get_all_existing_ids.clear() # Vider le cache des IDs
             st.rerun()
 
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde des données : {e}")
 
-# --- 5. FONCTION UTILITAIRE D'IMPORTATION DE NOUVELLES RÉCEPTIONS ---
 def upload_new_receptions(uploaded_file, column_headers):
     """
-    Lit un fichier Excel et ajoute les nouvelles réceptions à la Google Sheet.
+    Lit un fichier Excel et ajoute les nouvelles réceptions à la Google Sheet,
+    en vérifiant qu'il n'y ait pas de doublons sur le NuméroAuto.
     """
     if uploaded_file is None: return
 
@@ -206,7 +230,38 @@ def upload_new_receptions(uploaded_file, column_headers):
             st.error(f"Fichier Excel incomplet. Colonnes manquantes : {', '.join(missing_cols)}")
             return
             
-        df_insert = df_new.copy()
+        # --- NOUVEAU CONTRÔLE DE DOUBLONS ---
+        
+        # 1. Préparation des IDs du fichier d'importation
+        df_new[KEY_COLUMN] = df_new[KEY_COLUMN].astype(str).str.strip()
+        import_ids = df_new[KEY_COLUMN].tolist()
+        
+        # 2. Doublons INTERNES au fichier d'import
+        internal_duplicates = df_new[df_new.duplicated(subset=[KEY_COLUMN], keep=False)][KEY_COLUMN].unique()
+        if len(internal_duplicates) > 0:
+            st.warning(f"⚠️ {len(internal_duplicates)} NuméroAuto en doublon dans le fichier d'importation. Les doublons seront ignorés.")
+        
+        # Filtrer les doublons internes pour obtenir les IDs uniques à vérifier
+        df_unique_to_check = df_new.drop_duplicates(subset=[KEY_COLUMN], keep='first')
+        
+        # 3. Doublons EXTERNES (vs Google Sheet)
+        existing_ids = get_all_existing_ids(column_headers)
+        external_duplicates = df_unique_to_check[df_unique_to_check[KEY_COLUMN].isin(existing_ids)][KEY_COLUMN].tolist()
+        
+        if len(external_duplicates) > 0:
+            st.error(f"❌ {len(external_duplicates)} NuméroAuto sont déjà présents dans la base de données et seront ignorés.")
+            st.caption(f"Doublons : {', '.join(external_duplicates[:5])}{'...' if len(external_duplicates) > 5 else ''}")
+        
+        # 4. Filtrage final : ne garder que les lignes uniques et non existantes
+        df_to_append = df_unique_to_check[~df_unique_to_check[KEY_COLUMN].isin(existing_ids)].copy()
+        
+        if df_to_append.empty:
+            st.warning("Aucune nouvelle ligne unique à importer après vérification des doublons.")
+            return
+
+        # --- FIN CONTRÔLE DE DOUBLONS ---
+            
+        df_insert = df_to_append.copy()
         
         # Initialisation des colonnes manquantes
         for col in column_headers:
@@ -224,7 +279,7 @@ def upload_new_receptions(uploaded_file, column_headers):
         data_to_append = df_insert.values.tolist()
         
         if not data_to_append:
-            st.warning("Le fichier Excel ne contient aucune donnée à importer.")
+            st.warning("Le fichier Excel ne contient aucune donnée à importer après filtration.")
             return
 
         # Insertion dans Google Sheet
@@ -234,18 +289,18 @@ def upload_new_receptions(uploaded_file, column_headers):
         
         worksheet.append_rows(data_to_append, value_input_option='USER_ENTERED')
         
-        st.success(f"✅ {len(data_to_append)} nouvelle(s) réception(s) importée(s) avec succès!")
+        st.success(f"✅ **{len(data_to_append)}** nouvelle(s) réception(s) importée(s) avec succès!")
         
         # Réinitialisation de l'uploader et relance
         st.session_state.uploader_key += 1 
         st.cache_data.clear()
+        get_all_existing_ids.clear() # Vider le cache des IDs
         st.rerun()
 
     except Exception as e:
         st.error(f"Erreur lors de l'importation : {e}")
 
 
-# --- 6. GESTION DES COMMANDES PDC MANUELLES (NOUVELLE FONCTION) ---
 def add_new_pdc_reception(magasin, fournisseur, mt_ht, acheteur_pdc, date_livraison, column_headers):
     """ Ajoute manuellement une nouvelle commande PDC à la feuille. """
     try:
@@ -277,19 +332,34 @@ def add_new_pdc_reception(magasin, fournisseur, mt_ht, acheteur_pdc, date_livrai
         
         st.success(f"✅ Commande PDC '{num_auto}' ajoutée avec succès!")
         st.cache_data.clear()
+        get_all_existing_ids.clear() # Vider le cache des IDs
         st.rerun()
 
     except Exception as e:
         st.error(f"Erreur lors de la saisie manuelle : {e}")
 
 
-# --- 7. FONCTIONS D'AFFICHAGE DES ÉTAPES ---
+# --- 3. FONCTIONS D'AFFICHAGE DES ÉTAPES ---
 
 def step_1_reception(df_data, column_headers):
     """ Étape 1 : Import ou Saisie Réception. """
     st.header("1️⃣ Import ou Saisie Réception")
     st.caption("Cette étape sert à ajouter de nouvelles commandes via un fichier ou manuellement (PDC).")
 
+   
+    # --- Importation (Déplacé ici) ---
+    with st.expander("📥 Import de Nouvelles Réceptions (Fichier Excel)", expanded=False):
+        st.caption(f"Fichier requis : Excel (.xlsx) avec au moins les colonnes : {', '.join(IMPORT_REQUIRED_COLUMNS)}.")
+        st.warning("⚠️ Attention : Un contrôle de doublons est effectué sur la colonne 'NuméroAuto'. Les doublons ne seront pas importés.")
+        uploaded_file = st.file_uploader(
+            "Sélectionner un fichier Excel", 
+            type=['xlsx'],
+            key=f"file_uploader_{st.session_state.uploader_key}" 
+        )
+        if uploaded_file is not None and st.button("🚀 Lancer l'Importation"):
+            upload_new_receptions(uploaded_file, column_headers)
+
+    
     # --- Saisie Manuelle PDC ---
     with st.expander("➕ Saisie Manuelle PDC (Commande Ponctuelle)", expanded=True):
         col_form_1, col_form_2, col_form_3 = st.columns(3)
@@ -306,18 +376,6 @@ def step_1_reception(df_data, column_headers):
                 add_new_pdc_reception(magasin, fournisseur, mt_ht, acheteur_pdc, date_livraison, column_headers)
     
     st.markdown("---")
-    
-    # --- Importation (Déplacé ici) ---
-    with st.expander("📥 Import de Nouvelles Réceptions (Fichier Excel)", expanded=False):
-        st.caption(f"Fichier requis : Excel (.xlsx) avec au moins les colonnes : {', '.join(IMPORT_REQUIRED_COLUMNS)}.")
-        uploaded_file = st.file_uploader(
-            "Sélectionner un fichier Excel", 
-            type=['xlsx'],
-            key=f"file_uploader_{st.session_state.uploader_key}" 
-        )
-        if uploaded_file is not None and st.button("🚀 Lancer l'Importation"):
-            upload_new_receptions(uploaded_file, column_headers)
-
 
 def display_data_editor(df_filtered, editable_cols):
     """ Fonction utilitaire pour configurer et afficher le st.data_editor. """
@@ -448,7 +506,7 @@ def display_details(df_filtered, editable_cols):
              pass
 
 
-# --- 8. LOGIQUE ET AFFICHAGE STREAMLIT PRINCIPAL ---
+# --- 4. LOGIQUE ET AFFICHAGE STREAMLIT PRINCIPAL ---
 
 def main():
     st.set_page_config(
@@ -483,6 +541,7 @@ def main():
         st.markdown("---")
         if st.button("🔄 Rafraîchir les données", key="refresh_data_side"):
             st.cache_data.clear()
+            get_all_existing_ids.clear() # Vider le cache des IDs
             st.rerun() 
             
     # Si les données ne sont pas chargées, afficher un message et empêcher la navigation
