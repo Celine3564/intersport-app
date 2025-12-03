@@ -345,17 +345,17 @@ def main():
     
     # Éditeur de données
     # J'ai ajouté un `pd.DataFrame` autour de `df_filtered` pour m'assurer que l'objet passé est bien un DataFrame valide
-    edited_df = st.data_editor(
-        pd.DataFrame(df_filtered), # Encapsulation pour garantir le type
-        key="command_editor",
-        height=500,
-        use_container_width=True,
-        hide_index=True,
-        column_order=APP_VIEW_COLUMNS,
-        column_config=column_configs,
-        # Ajout de la sélection de ligne pour la fonctionnalité de détails
-        on_select="rerun" # On relance l'app pour afficher les détails immédiatement
-    )
+   # edited_df = st.data_editor(
+   #     pd.DataFrame(df_filtered), # Encapsulation pour garantir le type
+   #     key="command_editor",
+   #     height=500,
+   #     use_container_width=True,
+   #     hide_index=True,
+   #     column_order=APP_VIEW_COLUMNS,
+   #     column_config=column_configs,
+   #     # Ajout de la sélection de ligne pour la fonctionnalité de détails
+    #    on_select="rerun" # On relance l'app pour afficher les détails immédiatement
+    #)
 
     # 5. Affichage des détails de la ligne sélectionnée (Feature 1)
     
