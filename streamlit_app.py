@@ -158,6 +158,7 @@ def save_data_to_gsheet(edited_df, df_filtered_pre_edit, column_headers):
         for filtered_index, changes in edited_rows.items():
             
             # Récupérer la valeur unique de la clé (NuméroAuto) dans le tableau pré-édité
+            # C'est la ligne correcte car elle est basée sur le DF affiché juste avant l'édition.
             key_value = df_filtered_pre_edit.iloc[filtered_index][KEY_COLUMN]
             
             # 4. Trouver la ligne physique dans la Google Sheet
@@ -347,15 +348,24 @@ def main():
 
     # 5. Affichage des détails de la ligne sélectionnée (Feature 1)
     
-    # Vérifie si le DataFrame n'est pas vide ET si une sélection a été faite
-    if not df_filtered.empty and 'selection' in st.session_state["command_editor"] and st.session_state["command_editor"]["selection"]["rows"]:
-        
-        selected_index = st.session_state["command_editor"]["selection"]["rows"][0]
+    # Vérifie si la sélection est présente et non vide
+    selection_state = st.session_state.get("command_editor", {}).get("selection", {})
+    selected_rows_indices = selection_state.get("rows", [])
+    
+    if selected_rows_indices:
+        # Récupère l'index de la ligne sélectionnée dans le DF filtré (c'est l'index qui est potentiellement problématique)
+        selected_index_in_filtered_df = selected_rows_indices[0]
         
         try:
-            # Tente d'accéder à la ligne. Si l'index est hors limites (à cause d'un filtre), une IndexError sera levée.
-            selected_row_data = df_filtered.iloc[selected_index]
-
+            # 1. Récupérer le NuméroAuto (clé unique) de la ligne sélectionnée dans le DF filtré ACTUEL
+            # Si l'index est valide dans le DF ACTUEL, nous continuons. 
+            # Sinon, cette ligne lève l'IndexError que nous allons gérer.
+            key_value = df_filtered.iloc[selected_index_in_filtered_df][KEY_COLUMN]
+            
+            # 2. Utiliser la clé unique pour récupérer la ligne complète dans le DF filtré (ce qui est redondant mais sécurise l'accès)
+            # Cette étape est principalement pour s'assurer que nous avons une ligne DataFrame valide.
+            selected_row_data = df_filtered[df_filtered[KEY_COLUMN] == key_value].iloc[0]
+            
             st.divider()
             st.markdown("### 🔎 Détails de la Commande Sélectionnée")
             
@@ -377,10 +387,12 @@ def main():
             st.divider()
 
         except IndexError:
-            # Gestion silencieuse de l'erreur d'indexation causée par le changement de filtre
-            # On n'affiche rien ou on met un message d'info, mais l'app ne crashe pas.
-            st.info("Détails non affichés : La sélection précédente a été réinitialisée après l'application du filtre.")
-            pass
+            # Si l'IndexError est levée (parce que l'index sélectionné n'existe plus après l'application d'un nouveau filtre),
+            # nous gérons l'erreur et n'affichons rien (ou un message d'information).
+            st.info("Détails non affichés : La sélection précédente a été perdue suite à l'application du filtre ou au rechargement des données.")
+        except Exception as e:
+            # Gestion d'autres erreurs potentielles (juste au cas où)
+            st.error(f"Erreur inattendue lors de l'affichage des détails : {e}")
 
 
     # 7. Bouton de Rafraîchissement et Sauvegarde
