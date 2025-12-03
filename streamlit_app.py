@@ -16,14 +16,12 @@ PENDING_BL_WORKSHEET_NAME = 'BL_EN_ATTENTE'
 KEY_COLUMN = 'NuméroAuto'
 
 # Colonnes provenant de l'Excel (Source de vérité, Lecture Seule)
-# Mises à jour selon votre nouvelle liste
 ALL_EXCEL_COLUMNS = [
     'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
     'Livré le', 'Qté', 'Collection'
 ]
 
 # Colonnes Manuelles (Saisies par l'utilisateur dans l'App)
-# Mises à jour selon votre nouvelle liste
 APP_MANUAL_COLUMNS = [
     'StatutLivraison', 
     'NomTransporteur', 'Emplacement', 'NbPalettes', 'Poids_total', 
@@ -32,23 +30,21 @@ APP_MANUAL_COLUMNS = [
     'PDC', 'AcheteurPDC'
 ]
 
-# --- DEFINITION DES VUES (Quelles colonnes pour quelle étape) ---
+# --- DEFINITION DES VUES ---
 
-# Étape 1 : Affichage Uniquement (Import/Saisie)
+# Étape 1 : Affichage Uniquement
 STEP_1_VIEW_COLUMNS = [
     KEY_COLUMN, 'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
     'Livré le', 'Qté', 'Collection', 'StatutLivraison', 'PDC', 'AcheteurPDC'
 ]
 
 # Étape 2 : Saisie Transport
-# Note : N° Fourn. et Mt TTC sont masqués ici
 STEP_2_VIEW_COLUMNS = [
     KEY_COLUMN, 'Magasin', 'Fournisseur', 'Livré le', 'Qté', 
     'Collection', 'StatutLivraison', 
     'NomTransporteur', 'Emplacement', 'NbPalettes', 'Poids_total', 
     'Commentaire_Livraison', 'LitigeReception', 'Colis_manquant/abimé/ouvert'
 ]
-# Colonnes réellement éditables dans l'étape 2
 STEP_2_EDITABLE = [
     'StatutLivraison', 'NomTransporteur', 'Emplacement', 'NbPalettes', 
     'Poids_total', 'Commentaire_Livraison', 'LitigeReception', 'Colis_manquant/abimé/ouvert'
@@ -60,12 +56,11 @@ STEP_3_VIEW_COLUMNS = [
     'Collection', 'StatutLivraison', 
     'NomDeballage', 'DateDebutDeballage', 'LitigesDeballe', 'Commentaire_litige'
 ]
-# Colonnes réellement éditables dans l'étape 3
 STEP_3_EDITABLE = [
     'NomDeballage', 'DateDebutDeballage', 'LitigesDeballe', 'Commentaire_litige'
 ]
 
-# Union de toutes les colonnes pour le chargement global
+# Union de toutes les colonnes
 ALL_APP_COLUMNS = list(set([KEY_COLUMN] + ALL_EXCEL_COLUMNS + APP_MANUAL_COLUMNS))
 
 # Colonnes pour les BLs en attente (Étape 4)
@@ -74,7 +69,7 @@ PENDING_BL_COLUMNS = ['Fournisseur', 'NuméroBL', 'DateReceptionPhysique', 'Stat
 # Colonnes requises pour le fichier d'importation
 IMPORT_REQUIRED_COLUMNS = [KEY_COLUMN, 'Magasin', 'Fournisseur', 'Mt TTC'] 
 
-# Liste de toutes les colonnes de la feuille (y compris Clôturé)
+# Liste de toutes les colonnes de la feuille
 SHEET_REQUIRED_COLUMNS = ALL_APP_COLUMNS + ['Clôturé']
 
 
@@ -235,7 +230,6 @@ def upload_new_receptions(uploaded_file, column_headers):
         df_new = pd.read_excel(uploaded_file, engine='openpyxl')
         df_new.columns = df_new.columns.str.strip()
         
-        # Validation minimale des colonnes pour l'import
         missing_cols = [col for col in IMPORT_REQUIRED_COLUMNS if col not in df_new.columns]
         if missing_cols:
             st.error(f"Fichier Excel incomplet. Colonnes manquantes : {', '.join(missing_cols)}")
@@ -243,13 +237,11 @@ def upload_new_receptions(uploaded_file, column_headers):
             
         df_new[KEY_COLUMN] = df_new[KEY_COLUMN].astype(str).str.strip()
         
-        # Contrôle doublons internes
         internal_duplicates = df_new[df_new.duplicated(subset=[KEY_COLUMN], keep=False)][KEY_COLUMN].unique()
         if len(internal_duplicates) > 0:
             st.warning(f"⚠️ {len(internal_duplicates)} NuméroAuto en doublon dans le fichier. Ignorés.")
         df_unique_to_check = df_new.drop_duplicates(subset=[KEY_COLUMN], keep='first')
         
-        # Contrôle doublons externes
         existing_ids = get_all_existing_ids(column_headers)
         external_duplicates = df_unique_to_check[df_unique_to_check[KEY_COLUMN].isin(existing_ids)][KEY_COLUMN].tolist()
         
@@ -263,7 +255,6 @@ def upload_new_receptions(uploaded_file, column_headers):
             return
 
         df_insert = df_to_append.copy()
-        # Initialisation des colonnes manquantes
         for col in column_headers:
             if col not in df_insert.columns:
                 if col == 'Clôturé': df_insert[col] = 'NON' 
@@ -300,11 +291,8 @@ def add_new_pdc_reception(magasin, fournisseur, mt_ttc, acheteur_pdc, date_livra
         new_row_data[KEY_COLUMN] = num_auto
         new_row_data['Magasin'] = magasin
         new_row_data['Fournisseur'] = fournisseur
-        new_row_data['Mt TTC'] = str(mt_ttc) # Note: Mt TTC et non Mt HT
+        new_row_data['Mt TTC'] = str(mt_ttc) 
         new_row_data['AcheteurPDC'] = acheteur_pdc
-        # On peut mettre la date prévue quelque part si besoin, sinon juste stockée
-        # Note: DateLivraison dans le schéma est souvent la date réelle.
-        # Vous pouvez ajouter 'DatePrevue' si vous le souhaitez dans les colonnes Excel.
         new_row_data['PDC'] = 'OUI' 
         new_row_data['Clôturé'] = 'NON' 
 
@@ -389,7 +377,6 @@ def add_pending_bl(fournisseur, numero_bl):
 def display_data_editor(df_filtered, view_cols, editable_cols):
     """ Affiche l'éditeur avec les colonnes de vue et la config d'édition. """
     
-    # On désactive tout ce qui n'est pas dans editable_cols
     column_configs = {
         col: st.column_config.Column(
             col,
@@ -397,12 +384,10 @@ def display_data_editor(df_filtered, view_cols, editable_cols):
         ) for col in view_cols
     }
     
-    # Filtrer le DF pour ne montrer que les colonnes de la vue
-    # On s'assure que les colonnes existent
     cols_to_show = [c for c in view_cols if c in df_filtered.columns]
     df_to_show = df_filtered[cols_to_show].copy()
 
-    st.session_state['df_filtered_pre_edit'] = df_filtered.copy() # On garde tout le DF pour la sauvegarde par index/clé
+    st.session_state['df_filtered_pre_edit'] = df_filtered.copy()
 
     edited_df = st.data_editor(
         df_to_show, 
@@ -423,9 +408,6 @@ def display_details(df_filtered, view_cols):
     if selected_rows_indices and not df_filtered.empty:
         selected_index = selected_rows_indices[0]
         try:
-            # Attention : l'index retourné par data_editor correspond au DF passé (df_to_show)
-            # qui est aligné avec df_filtered (copie).
-            # On utilise la clé pour retrouver la ligne complète si besoin, ou on affiche juste les colonnes de vue.
             key_value = df_filtered.iloc[selected_index][KEY_COLUMN]
             selected_row_data = df_filtered[df_filtered[KEY_COLUMN] == key_value].iloc[0]
             
@@ -434,7 +416,6 @@ def display_details(df_filtered, view_cols):
             detail_cols = st.columns(4)
             col_index = 0
             
-            # Afficher les colonnes de la vue courante
             for col_name in view_cols:
                 value = selected_row_data.get(col_name, "N/A")
                 if col_name.startswith('Commentaire_'):
@@ -464,11 +445,6 @@ def step_1_reception(df_data, column_headers):
     st.markdown("---")
     st.subheader("Visualisation des Réceptions (Lecture Seule)")
     
-    # Affichage en lecture seule des colonnes de l'étape 1
-    # On utilise display_data_editor avec editable_cols vide ou restreint si besoin (StatutLivraison ?)
-    # L'image dit "Affichage" pour StatutLivraison. On va le mettre en lecture seule pour l'étape 1.
-    
-    # Filtres basiques pour Step 1
     magasins = ['Tous'] + sorted(df_data['Magasin'].unique().tolist())
     sel_mag = st.selectbox("Magasin:", magasins, key="s1_mag")
     
@@ -476,55 +452,83 @@ def step_1_reception(df_data, column_headers):
     if sel_mag != 'Tous':
         df_show = df_show[df_show['Magasin'] == sel_mag]
         
-    display_data_editor(df_show, STEP_1_VIEW_COLUMNS, []) # Aucune colonne éditable en étape 1 (Import/Saisie)
+    display_data_editor(df_show, STEP_1_VIEW_COLUMNS, [])
 
 
 def step_2_transport(df_data):
     st.header("2️⃣ Saisie Info Transport")
     
-    c1, c2 = st.columns(2)
+    # 4 colonnes de filtres
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
         magasins = ['Tous'] + sorted(df_data['Magasin'].unique().tolist())
         sel_mag = st.selectbox("Magasin:", magasins, key="s2_mag")
     with c2:
         statuts = ['Tous'] + sorted(df_data['StatutLivraison'].unique().tolist())
         sel_stat = st.selectbox("Statut:", statuts, key="s2_stat")
+    with c3:
+        fournisseurs = ['Tous'] + sorted(df_data['Fournisseur'].unique().tolist())
+        sel_fourn = st.selectbox("Fournisseur:", fournisseurs, key="s2_fourn")
+    with c4:
+        dates = ['Tous'] + sorted(df_data['Livré le'].astype(str).unique().tolist())
+        sel_date = st.selectbox("Date (Livré le):", dates, key="s2_date")
     
     df_filtered = df_data.copy()
     if sel_mag != 'Tous': df_filtered = df_filtered[df_filtered['Magasin'] == sel_mag]
     if sel_stat != 'Tous': df_filtered = df_filtered[df_filtered['StatutLivraison'].astype(str).str.strip() == sel_stat.strip()]
+    if sel_fourn != 'Tous': df_filtered = df_filtered[df_filtered['Fournisseur'] == sel_fourn]
+    if sel_date != 'Tous': df_filtered = df_filtered[df_filtered['Livré le'].astype(str) == sel_date]
 
-    st.subheader(f"Commandes : {len(df_filtered)}")
+    # Bouton Enregistrer en haut à droite du compteur
+    c_head, c_btn = st.columns([3, 1])
+    with c_head:
+        st.subheader(f"Commandes : {len(df_filtered)}")
+    with c_btn:
+        if st.button("💾 Enregistrer", key="btn_save_s2"):
+            save_data_to_gsheet(None, st.session_state['df_filtered_pre_edit'], st.session_state['column_headers'])
     
-    # Affichage avec colonnes spécifiques à l'étape 2 et édition restreinte
+    # On met à jour l'état session pour la sauvegarde *avant* l'affichage de l'éditeur
+    # Cependant display_data_editor le fait aussi.
+    # IMPORTANT: Le bouton déclenche la sauvegarde AVANT l'affichage de l'éditeur lors du rerun
+    # MAIS il utilise les données de l'édition précédente stockées dans session_state.
+    
     edited_df = display_data_editor(df_filtered, STEP_2_VIEW_COLUMNS, STEP_2_EDITABLE)
     display_details(df_filtered, STEP_2_VIEW_COLUMNS)
 
-    if st.button("💾 Enregistrer Transport"):
-        save_data_to_gsheet(edited_df, st.session_state['df_filtered_pre_edit'], st.session_state['column_headers'])
 
 def step_3_deballage(df_data):
     st.header("3️⃣ Saisie Déballage")
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
         magasins = ['Tous'] + sorted(df_data['Magasin'].unique().tolist())
         sel_mag = st.selectbox("Magasin:", magasins, key="s3_mag")
     with c2:
         litiges = ['Tous'] + sorted(df_data['LitigesDeballe'].unique().tolist()) if 'LitigesDeballe' in df_data.columns else ['Tous']
         sel_lit = st.selectbox("Litiges:", litiges, key="s3_lit")
+    with c3:
+        fournisseurs = ['Tous'] + sorted(df_data['Fournisseur'].unique().tolist())
+        sel_fourn = st.selectbox("Fournisseur:", fournisseurs, key="s3_fourn")
+    with c4:
+        dates = ['Tous'] + sorted(df_data['Livré le'].astype(str).unique().tolist())
+        sel_date = st.selectbox("Date (Livré le):", dates, key="s3_date")
 
     df_filtered = df_data.copy()
     if sel_mag != 'Tous': df_filtered = df_filtered[df_filtered['Magasin'] == sel_mag]
     if sel_lit != 'Tous': df_filtered = df_filtered[df_filtered['LitigesDeballe'].astype(str).str.strip() == sel_lit.strip()]
+    if sel_fourn != 'Tous': df_filtered = df_filtered[df_filtered['Fournisseur'] == sel_fourn]
+    if sel_date != 'Tous': df_filtered = df_filtered[df_filtered['Livré le'].astype(str) == sel_date]
 
-    st.subheader(f"Commandes : {len(df_filtered)}")
+    c_head, c_btn = st.columns([3, 1])
+    with c_head:
+        st.subheader(f"Commandes : {len(df_filtered)}")
+    with c_btn:
+        if st.button("💾 Enregistrer", key="btn_save_s3"):
+            save_data_to_gsheet(None, st.session_state['df_filtered_pre_edit'], st.session_state['column_headers'])
     
     edited_df = display_data_editor(df_filtered, STEP_3_VIEW_COLUMNS, STEP_3_EDITABLE)
     display_details(df_filtered, STEP_3_VIEW_COLUMNS)
 
-    if st.button("💾 Enregistrer Déballage"):
-        save_data_to_gsheet(edited_df, st.session_state['df_filtered_pre_edit'], st.session_state['column_headers'])
 
 def step5_pdc_saisie(column_headers):
     st.header("5️⃣ Saisie Manuelle PDC")
