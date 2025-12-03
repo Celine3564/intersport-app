@@ -252,6 +252,10 @@ def upload_new_receptions(uploaded_file, column_headers):
         
         st.success(f"✅ {len(data_to_append)} nouvelle(s) réception(s) importée(s) avec succès dans la Google Sheet!")
         
+        # --- NOUVEAU : Vider l'uploader après l'importation réussie ---
+        if 'uploader_key' in st.session_state:
+            st.session_state.uploader_key += 1 # Incrémente la clé pour forcer la réinitialisation du composant
+        
         # Nettoyer le cache et relancer pour afficher les nouvelles données
         st.cache_data.clear()
         st.rerun()
@@ -272,6 +276,10 @@ def main():
     st.title("📦 Suivi des Commandes en Cours")
     st.caption("Affiche les commandes NON Clôturées de la Google Sheet, prêtes pour la mise à jour manuelle.")
 
+    # Initialiser la clé de l'uploader pour permettre la réinitialisation après succès
+    if 'uploader_key' not in st.session_state:
+        st.session_state.uploader_key = 0
+
     # 1. Chargement des données (avec mise en cache)
     df_data, column_headers = load_data_from_gsheet()
     
@@ -279,12 +287,15 @@ def main():
 
     if df_data.empty:
         st.info("Aucune donnée n'a été chargée. Veuillez vérifier la connexion ou l'existence de commandes ouvertes.")
-        # Afficher la section d'importation même si le df_data est vide
     
     # --- SECTION IMPORTATION NOUVELLES RÉCEPTIONS (Feature 2) ---
     with st.sidebar.expander("Importer de Nouvelles Réceptions", expanded=False):
         st.caption("Fichier requis : Excel (.xlsx) avec au moins les colonnes 'NuméroAuto', 'Magasin', 'Fournisseur', 'Mt HT'.")
-        uploaded_file = st.file_uploader("Sélectionner un fichier Excel", type=['xlsx'])
+        uploaded_file = st.file_uploader(
+            "Sélectionner un fichier Excel", 
+            type=['xlsx'],
+            key=f"file_uploader_{st.session_state.uploader_key}" # Utilise la clé pour la réinitialisation
+        )
         if uploaded_file is not None and st.button("🚀 Importer les données"):
             upload_new_receptions(uploaded_file, column_headers)
             
