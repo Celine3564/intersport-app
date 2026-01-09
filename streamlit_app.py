@@ -10,6 +10,7 @@ WS_DATA = 'DATA'
 WS_TRANSPORT = 'TRANSPORT'
 WS_PENDING = 'BL_EN_ATTENTE'
 
+# Note: Utilisation de 'NumReception' sans accent pour correspondre à vos dernières modifs
 KEY_DATA = 'NumReception'
 KEY_TRANS = 'NumTransport'
 
@@ -26,7 +27,7 @@ COLUMNS_TRANSPORT = [
 ]
 
 COLUMNS_PENDING = [
-    'Fournisseur', 'NumBL', 'DateRecPhysique', 'Statut', 'Montant', 'NbColis','Commentaire'
+    'Fournisseur', 'NumBL', 'DateRecPhysique', 'Statut', 'Montant', 'NbColis', 'Commentaire'
 ]
 
 # --- 2. FONCTIONS DE GESTION GOOGLE SHEET ---
@@ -103,14 +104,12 @@ def import_nozymag(uploaded_file):
     df_new = pd.read_excel(uploaded_file)
     df_new.columns = df_new.columns.str.strip()
     
-    # GESTION DU NOM DE COLONNE FLEXIBLE
-    # On vérifie si 'NumeroAuto' existe, si oui on le renomme en 'NumRéception'
+    # Gestion du NumeroAuto vers NumReception
     if 'NumeroAuto' in df_new.columns and 'NumReception' not in df_new.columns:
         df_new = df_new.rename(columns={'NumeroAuto': 'NumReception'})
         st.info("Mapping : 'NumeroAuto' utilisé comme 'NumReception'")
 
-    # Validation minimale
-    required = ['NumRéception', 'Magasin', 'Fournisseur']
+    required = ['NumReception', 'Magasin', 'Fournisseur']
     if not all(c in df_new.columns for c in required):
         st.error(f"Colonnes manquantes. Besoin de : {required} ou 'NumeroAuto'")
         return
@@ -118,12 +117,10 @@ def import_nozymag(uploaded_file):
     df_existing = load_sheet_data(WS_DATA, COLUMNS_DATA)
     existing_ids = set(df_existing[KEY_DATA].astype(str))
     
-    # Filtrer les doublons
-    df_to_add = df_new[~df_new['NumRéception'].astype(str).isin(existing_ids)].copy()
+    df_to_add = df_new[~df_new['NumReception'].astype(str).isin(existing_ids)].copy()
     
     if not df_to_add.empty:
         df_to_add['StatutBL'] = 'A_DEBALLER'
-        # Remplir les colonnes manquantes pour correspondre au Google Sheet
         for col in COLUMNS_DATA:
             if col not in df_to_add.columns:
                 df_to_add[col] = ''
@@ -156,8 +153,6 @@ def main():
 
     df_data = load_sheet_data(WS_DATA, COLUMNS_DATA)
 
-    # --- PAGES ---
-
     if st.session_state.page == 'accueil':
         st.title("Tableau de bord")
         c1, c2, c3 = st.columns(3)
@@ -169,7 +164,7 @@ def main():
         st.header("1️⃣ Import Nozymag & Emplacements")
         
         with st.expander("📥 Importer fichier Nozymag"):
-            st.write("Le système accepte les colonnes 'NumRéception' ou 'NumeroAuto'.")
+            st.write("Le système accepte les colonnes 'NumReception' ou 'NumeroAuto'.")
             up = st.file_uploader("Fichier Excel", type=['xlsx'])
             if up and st.button("Lancer l'import"): import_nozymag(up)
 
@@ -179,10 +174,20 @@ def main():
         if df_p1.empty:
             st.info("Aucune réception en attente d'emplacement.")
         else:
+            # ICI : Affichage de TOUTES les colonnes importées
+            # Seule la colonne 'Emplacement' est éditable
+            cols_to_show = [
+                'NumReception', 'Magasin', 'Fournisseur', 'N° Fourn.', 
+                'Mt TTC', 'Date Livré', 'Qté', 'Collection', 'Num Facture', 'Emplacement'
+            ]
+            
+            # On définit les colonnes non-éditables (tout sauf Emplacement)
+            disabled_cols = [c for c in cols_to_show if c != 'Emplacement']
+
             edited = st.data_editor(
                 df_p1,
-                column_order=['NumRéception', 'Magasin', 'Fournisseur', 'Emplacement'],
-                disabled=['NumRéception', 'Magasin', 'Fournisseur'],
+                column_order=cols_to_show,
+                disabled=disabled_cols,
                 key="p1_editor",
                 use_container_width=True,
                 hide_index=True
@@ -190,11 +195,15 @@ def main():
             
             if st.button("Enregistrer les emplacements"):
                 changes = st.session_state["p1_editor"].get("edited_rows", {})
-                for idx, val in changes.items():
-                    rid = df_p1.iloc[int(idx)][KEY_DATA]
-                    update_gsheet_row(WS_DATA, KEY_DATA, rid, val)
-                st.success("Mise à jour réussie.")
-                st.rerun()
+                if not changes:
+                    st.info("Aucune modification détectée.")
+                else:
+                    for idx_str, val in changes.items():
+                        idx = int(idx_str)
+                        rid = df_p1.iloc[idx][KEY_DATA]
+                        update_gsheet_row(WS_DATA, KEY_DATA, rid, val)
+                    st.success("Emplacements mis à jour.")
+                    st.rerun()
 
     elif st.session_state.page == 'p2':
         st.header("2️⃣ Gestion des Transports")
@@ -214,7 +223,8 @@ def main():
         st.subheader("Associer Transport à Réception")
         col_rec, col_tr = st.columns(2)
         with col_rec:
-            sel_rec = st.selectbox("Réception", df_data[df_data['StatutBL'] != 'TERMINEE'][KEY_DATA])
+            active_receptions = df_data[df_data['StatutBL'] != 'TERMINEE'][KEY_DATA].tolist()
+            sel_rec = st.selectbox("Réception", active_receptions)
         with col_tr:
             sel_tr = st.selectbox("Transporteur", [""] + list(df_trans[KEY_TRANS].unique()))
         
