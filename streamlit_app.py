@@ -16,7 +16,7 @@ KEY_TRANS = 'NumTransport'
 
 COLUMNS_DATA = [
     'NumReception', 'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
-    'Date Livré', 'Qté', 'Collection', 'Num Facture', 'StatutBL', 
+    'Livré le', 'Qté', 'Collection', 'Num Facture', 'StatutBL', 
     'Emplacement', 'NomDeballage', 'DateDebutDeballage', 'LitigesCompta', 
     'Commentaire_litige', 'NumTransport'
 ]
