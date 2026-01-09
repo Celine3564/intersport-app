@@ -10,11 +10,9 @@ WS_DATA = 'DATA'
 WS_TRANSPORT = 'TRANSPORT'
 WS_PENDING = 'BL_EN_ATTENTE'
 
-# Clé Primaire
 KEY_DATA = 'NumRéception'
 KEY_TRANS = 'NumTransport'
 
-# Définition des colonnes selon vos spécifications
 COLUMNS_DATA = [
     'NumRéception', 'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
     'Date Livré', 'Qté', 'Collection', 'Num Facture', 'StatutBL', 
@@ -58,19 +56,16 @@ def load_sheet_data(worksheet_name, columns):
         return pd.DataFrame(columns=columns)
 
 def update_gsheet_row(worksheet_name, key_col, key_val, updates):
-    """Met à jour une ligne spécifique basée sur une clé unique."""
     try:
         gc = authenticate_gsheet()
         sh = gc.open_by_key(SHEET_ID)
         ws = sh.worksheet(worksheet_name)
         headers = ws.row_values(1)
         
-        # Trouver la colonne de la clé
         try:
             k_idx = headers.index(key_col) + 1
             cell = ws.find(str(key_val), in_column=k_idx)
         except (ValueError, gspread.exceptions.CellNotFound):
-            st.error(f"Entrée {key_val} introuvable dans {worksheet_name}")
             return False
 
         batch_updates = []
@@ -108,31 +103,37 @@ def import_nozymag(uploaded_file):
     df_new = pd.read_excel(uploaded_file)
     df_new.columns = df_new.columns.str.strip()
     
-    # Validation minimale des colonnes requises
-    required = ['NumRéception', 'Magasin', 'Fournisseur', 'Mt TTC']
+    # GESTION DU NOM DE COLONNE FLEXIBLE
+    # On vérifie si 'NumeroAuto' existe, si oui on le renomme en 'NumRéception'
+    if 'NumeroAuto' in df_new.columns and 'NumRéception' not in df_new.columns:
+        df_new = df_new.rename(columns={'NumeroAuto': 'NumRéception'})
+        st.info("Mapping : 'NumeroAuto' utilisé comme 'NumRéception'")
+
+    # Validation minimale
+    required = ['NumRéception', 'Magasin', 'Fournisseur']
     if not all(c in df_new.columns for c in required):
-        st.error("Colonnes manquantes dans l'Excel.")
+        st.error(f"Colonnes manquantes. Besoin de : {required} ou 'NumeroAuto'")
         return
 
-    # Préparation des données
     df_existing = load_sheet_data(WS_DATA, COLUMNS_DATA)
     existing_ids = set(df_existing[KEY_DATA].astype(str))
     
+    # Filtrer les doublons
     df_to_add = df_new[~df_new['NumRéception'].astype(str).isin(existing_ids)].copy()
     
     if not df_to_add.empty:
-        # Valeurs par défaut
         df_to_add['StatutBL'] = 'A_DEBALLER'
+        # Remplir les colonnes manquantes pour correspondre au Google Sheet
         for col in COLUMNS_DATA:
             if col not in df_to_add.columns:
                 df_to_add[col] = ''
         
         df_to_add = df_to_add[COLUMNS_DATA].astype(str)
         if append_to_sheet(WS_DATA, df_to_add):
-            st.success(f"{len(df_to_add)} réceptions importées avec statut 'A_DEBALLER'.")
+            st.success(f"{len(df_to_add)} nouvelles réceptions ajoutées.")
             st.rerun()
     else:
-        st.warning("Aucune nouvelle réception à importer.")
+        st.warning("Toutes les lignes de ce fichier existent déjà dans la base.")
 
 # --- 4. INTERFACE UTILISATEUR ---
 
@@ -141,144 +142,123 @@ def main():
     
     if 'page' not in st.session_state: st.session_state.page = 'accueil'
 
-    # Sidebar Navigation
     with st.sidebar:
         st.title("📦 NozyLog")
         if st.button("🏠 Accueil", use_container_width=True): st.session_state.page = 'accueil'
         st.divider()
+        st.write("**FLUX DE TRAVAIL**")
         if st.button("1️⃣ Import & Emplacement", use_container_width=True): st.session_state.page = 'p1'
         if st.button("2️⃣ Transporteurs", use_container_width=True): st.session_state.page = 'p2'
         if st.button("3️⃣ Déballage & Litiges", use_container_width=True): st.session_state.page = 'p3'
         if st.button("4️⃣ Historique Clôturé", use_container_width=True): st.session_state.page = 'p4'
+        st.divider()
         if st.button("📋 BL en attente", use_container_width=True): st.session_state.page = 'pending'
 
     df_data = load_sheet_data(WS_DATA, COLUMNS_DATA)
 
-    # --- ROUTAGE DES PAGES ---
+    # --- PAGES ---
 
     if st.session_state.page == 'accueil':
-        st.title("Tableau de bord Logistique")
-        st.write("Bienvenue dans le système de gestion des réceptions.")
-        c1, c2, c3, c4 = st.columns(4)
+        st.title("Tableau de bord")
+        c1, c2, c3 = st.columns(3)
         c1.metric("A Déballer", len(df_data[df_data['StatutBL'] == 'A_DEBALLER']))
         c2.metric("En Litige", len(df_data[df_data['StatutBL'] == 'LITIGE']))
         c3.metric("Terminées", len(df_data[df_data['StatutBL'] == 'TERMINEE']))
 
     elif st.session_state.page == 'p1':
-        st.header("1️⃣ Import des réceptions & Emplacements")
+        st.header("1️⃣ Import Nozymag & Emplacements")
         
-        with st.expander("📥 Importer Nozymag"):
+        with st.expander("📥 Importer fichier Nozymag"):
+            st.write("Le système accepte les colonnes 'NumRéception' ou 'NumeroAuto'.")
             up = st.file_uploader("Fichier Excel", type=['xlsx'])
             if up and st.button("Lancer l'import"): import_nozymag(up)
 
-        st.subheader("Liste des réceptions à traiter")
-        # Filtrer uniquement les lignes sans emplacement ou statut initial
+        st.subheader("Saisie des emplacements (Statut: A Déballer)")
         df_p1 = df_data[df_data['StatutBL'] == 'A_DEBALLER'].copy()
         
-        edited = st.data_editor(
-            df_p1,
-            column_order=['NumRéception', 'Magasin', 'Fournisseur', 'Date Livré', 'Emplacement'],
-            disabled=['NumRéception', 'Magasin', 'Fournisseur', 'Date Livré'],
-            key="p1_editor",
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        if st.button("Enregistrer les emplacements"):
-            changes = st.session_state["p1_editor"].get("edited_rows", {})
-            for idx, val in changes.items():
-                rid = df_p1.iloc[int(idx)][KEY_DATA]
-                update_gsheet_row(WS_DATA, KEY_DATA, rid, val)
-            st.success("Emplacements mis à jour.")
-            st.rerun()
+        if df_p1.empty:
+            st.info("Aucune réception en attente d'emplacement.")
+        else:
+            edited = st.data_editor(
+                df_p1,
+                column_order=['NumRéception', 'Magasin', 'Fournisseur', 'Emplacement'],
+                disabled=['NumRéception', 'Magasin', 'Fournisseur'],
+                key="p1_editor",
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            if st.button("Enregistrer les emplacements"):
+                changes = st.session_state["p1_editor"].get("edited_rows", {})
+                for idx, val in changes.items():
+                    rid = df_p1.iloc[int(idx)][KEY_DATA]
+                    update_gsheet_row(WS_DATA, KEY_DATA, rid, val)
+                st.success("Mise à jour réussie.")
+                st.rerun()
 
     elif st.session_state.page == 'p2':
-        st.header("2️⃣ Associer un Transporteur (Facultatif)")
-        
-        # Formulaire création transport
-        with st.expander("➕ Créer un nouveau transport"):
-            with st.form("trans_form"):
-                nt = st.text_input("NumTransport (Clé)")
-                mag = st.selectbox("Magasin", sorted(df_data['Magasin'].unique()))
-                tr_name = st.text_input("Nom Transporteur")
-                pal = st.number_input("Nombre Palettes", min_value=0)
-                if st.form_submit_button("Créer Transport"):
-                    new_t = pd.DataFrame([{
-                        'NumTransport': nt, 'Magasin': mag, 'NomTransporteur': tr_name, 'NbPalettes': pal
-                    }])
-                    append_to_sheet(WS_TRANSPORT, new_t)
-                    st.success("Transport créé.")
-
-        st.subheader("Associer Transport à Réception")
+        st.header("2️⃣ Gestion des Transports")
         df_trans = load_sheet_data(WS_TRANSPORT, COLUMNS_TRANSPORT)
         
-        # Filtrage
-        target_rec = st.selectbox("Sélectionner la Réception", df_data[df_data['StatutBL'] != 'TERMINEE'][KEY_DATA])
-        target_trans = st.selectbox("Sélectionner le Transport", ["Aucun"] + list(df_trans[KEY_TRANS].unique()))
+        with st.expander("➕ Enregistrer un nouveau transporteur"):
+            with st.form("new_trans"):
+                nt = st.text_input("Numéro de Transport (ID unique)")
+                tr_name = st.text_input("Nom Transporteur")
+                nb_p = st.number_input("Nombre Palettes", 0)
+                if st.form_submit_button("Valider"):
+                    if nt:
+                        append_to_sheet(WS_TRANSPORT, pd.DataFrame([{'NumTransport': nt, 'NomTransporteur': tr_name, 'NbPalettes': nb_p}]))
+                        st.success("Transport enregistré.")
+                    else: st.error("Le Numéro de Transport est obligatoire.")
+
+        st.subheader("Associer Transport à Réception")
+        col_rec, col_tr = st.columns(2)
+        with col_rec:
+            sel_rec = st.selectbox("Réception", df_data[df_data['StatutBL'] != 'TERMINEE'][KEY_DATA])
+        with col_tr:
+            sel_tr = st.selectbox("Transporteur", [""] + list(df_trans[KEY_TRANS].unique()))
         
-        if st.button("Lier le transport"):
-            update_gsheet_row(WS_DATA, KEY_DATA, target_rec, {'NumTransport': target_trans if target_trans != "Aucun" else ''})
-            st.success("Lien effectué.")
+        if st.button("Lier"):
+            update_gsheet_row(WS_DATA, KEY_DATA, sel_rec, {'NumTransport': sel_tr})
+            st.success("Lien mis à jour.")
 
     elif st.session_state.page == 'p3':
-        st.header("3️⃣ Liste des Réceptions à Déballer")
+        st.header("3️⃣ Déballage en cours")
         df_deballe = df_data[df_data['StatutBL'].isin(['A_DEBALLER', 'LITIGE'])].copy()
 
         if df_deballe.empty:
-            st.info("Aucune réception à déballer.")
+            st.info("Rien à déballer pour le moment.")
         else:
-            # On affiche les lignes
-            for index, row in df_deballe.iterrows():
+            for _, row in df_deballe.iterrows():
                 with st.container(border=True):
-                    c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
-                    c1.write(f"**{row['NumRéception']}** - {row['Fournisseur']}")
-                    c2.write(f"Emplacement: {row['Emplacement']}")
-                    c3.write(f"Statut actuel: {row['StatutBL']}")
+                    c1, c2, c3 = st.columns([3, 2, 2])
+                    c1.markdown(f"**Réception: {row[KEY_DATA]}**\n\n{row['Fournisseur']} | Emplacement: `{row['Emplacement']}`")
                     
-                    with st.expander("Action Déballage"):
-                        name = st.text_input("Nom du déballeur", value=row['NomDeballage'], key=f"n_{row[KEY_DATA]}")
-                        com = st.text_area("Commentaire / Litige", value=row['Commentaire_litige'], key=f"c_{row[KEY_DATA]}")
-                        
-                        btn_col1, btn_col2 = st.columns(2)
-                        if btn_col1.button("✅ Terminer", key=f"t_{row[KEY_DATA]}"):
+                    with c2:
+                        name = st.text_input("Déballeur", value=row['NomDeballage'], key=f"n_{row[KEY_DATA]}")
+                        com = st.text_area("Com. Litige", value=row['Commentaire_litige'], key=f"c_{row[KEY_DATA]}", height=68)
+                    
+                    with c3:
+                        st.write(f"Statut: **{row['StatutBL']}**")
+                        if st.button("✅ Terminer", key=f"t_{row[KEY_DATA]}"):
                             update_gsheet_row(WS_DATA, KEY_DATA, row[KEY_DATA], {
-                                'NomDeballage': name,
-                                'StatutBL': 'TERMINEE',
-                                'DateDebutDeballage': datetime.now().strftime('%Y-%m-%d %H:%M')
+                                'NomDeballage': name, 'StatutBL': 'TERMINEE',
+                                'DateDebutDeballage': datetime.now().strftime('%d/%m/%Y %H:%M')
                             })
                             st.rerun()
-                        
-                        if btn_col2.button("⚠️ Ouvrir Litige", key=f"l_{row[KEY_DATA]}", type="secondary"):
+                        if st.button("⚠️ Litige", key=f"l_{row[KEY_DATA]}"):
                             update_gsheet_row(WS_DATA, KEY_DATA, row[KEY_DATA], {
-                                'NomDeballage': name,
-                                'StatutBL': 'LITIGE',
-                                'Commentaire_litige': com
+                                'NomDeballage': name, 'StatutBL': 'LITIGE', 'Commentaire_litige': com
                             })
                             st.rerun()
 
     elif st.session_state.page == 'p4':
-        st.header("4️⃣ Historique des Réceptions Clôturées")
-        df_cloture = df_data[df_data['StatutBL'] == 'TERMINEE']
-        st.dataframe(df_cloture, use_container_width=True, hide_index=True)
+        st.header("4️⃣ Réceptions Clôturées")
+        st.dataframe(df_data[df_data['StatutBL'] == 'TERMINEE'], use_container_width=True, hide_index=True)
 
     elif st.session_state.page == 'pending':
-        st.header("📋 Marchandise en attente (Non saisie)")
+        st.header("📋 BL en attente de saisie")
         df_p = load_sheet_data(WS_PENDING, COLUMNS_PENDING)
-        
-        with st.expander("Ajouter un BL physique"):
-            with st.form("pending_form"):
-                f = st.text_input("Fournisseur")
-                bl = st.text_input("Numéro BL")
-                mt = st.number_input("Montant", min_value=0.0)
-                if st.form_submit_button("Ajouter à l'attente"):
-                    new_p = pd.DataFrame([{
-                        'Fournisseur': f, 'NuméroBL': bl, 'Montant': mt, 
-                        'DateReceptionPhysique': datetime.now().strftime('%Y-%m-%d'),
-                        'Statut': 'Attente Saisie'
-                    }])
-                    append_to_sheet(WS_PENDING, new_p)
-                    st.rerun()
-        
         st.table(df_p)
 
 if __name__ == "__main__":
