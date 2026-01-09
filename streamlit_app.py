@@ -10,11 +10,11 @@ WS_DATA = 'DATA'
 WS_TRANSPORT = 'TRANSPORT'
 WS_PENDING = 'BL_EN_ATTENTE'
 
-KEY_DATA = 'NumRéception'
+KEY_DATA = 'NumReception'
 KEY_TRANS = 'NumTransport'
 
 COLUMNS_DATA = [
-    'NumRéception', 'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
+    'NumReception', 'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
     'Date Livré', 'Qté', 'Collection', 'Num Facture', 'StatutBL', 
     'Emplacement', 'NomDeballage', 'DateDebutDeballage', 'LitigesCompta', 
     'Commentaire_litige', 'NumTransport'
@@ -26,7 +26,7 @@ COLUMNS_TRANSPORT = [
 ]
 
 COLUMNS_PENDING = [
-    'Fournisseur', 'NuméroBL', 'DateReceptionPhysique', 'Statut', 'Montant', 'NbColis'
+    'Fournisseur', 'NumBL', 'DateRecPhysique', 'Statut', 'Montant', 'NbColis','Commentaire'
 ]
 
 # --- 2. FONCTIONS DE GESTION GOOGLE SHEET ---
@@ -105,9 +105,9 @@ def import_nozymag(uploaded_file):
     
     # GESTION DU NOM DE COLONNE FLEXIBLE
     # On vérifie si 'NumeroAuto' existe, si oui on le renomme en 'NumRéception'
-    if 'NumeroAuto' in df_new.columns and 'NumRéception' not in df_new.columns:
-        df_new = df_new.rename(columns={'NumeroAuto': 'NumRéception'})
-        st.info("Mapping : 'NumeroAuto' utilisé comme 'NumRéception'")
+    if 'NumeroAuto' in df_new.columns and 'NumReception' not in df_new.columns:
+        df_new = df_new.rename(columns={'NumeroAuto': 'NumReception'})
+        st.info("Mapping : 'NumeroAuto' utilisé comme 'NumReception'")
 
     # Validation minimale
     required = ['NumRéception', 'Magasin', 'Fournisseur']
@@ -143,11 +143,11 @@ def main():
     if 'page' not in st.session_state: st.session_state.page = 'accueil'
 
     with st.sidebar:
-        st.title("📦 NozyLog")
+        st.title("📦 Suivi Logistique Groupe Dumasdelage")
         if st.button("🏠 Accueil", use_container_width=True): st.session_state.page = 'accueil'
         st.divider()
         st.write("**FLUX DE TRAVAIL**")
-        if st.button("1️⃣ Import & Emplacement", use_container_width=True): st.session_state.page = 'p1'
+        if st.button("1️⃣ Import Réception et Stockage Emplacement", use_container_width=True): st.session_state.page = 'p1'
         if st.button("2️⃣ Transporteurs", use_container_width=True): st.session_state.page = 'p2'
         if st.button("3️⃣ Déballage & Litiges", use_container_width=True): st.session_state.page = 'p3'
         if st.button("4️⃣ Historique Clôturé", use_container_width=True): st.session_state.page = 'p4'
