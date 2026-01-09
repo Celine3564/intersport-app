@@ -10,13 +10,12 @@ WS_DATA = 'DATA'
 WS_TRANSPORT = 'TRANSPORT'
 WS_PENDING = 'BL_EN_ATTENTE'
 
-# Note: Utilisation de 'NumReception' sans accent pour correspondre à vos dernières modifs
 KEY_DATA = 'NumReception'
 KEY_TRANS = 'NumTransport'
 
 COLUMNS_DATA = [
     'NumReception', 'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
-    'Livré le', 'Qté', 'Collection', 'N° Facture', 'StatutBL', 
+    'Date Livré', 'Qté', 'Collection', 'Num Facture', 'StatutBL', 
     'Emplacement', 'NomDeballage', 'DateDebutDeballage', 'LitigesCompta', 
     'Commentaire_litige', 'NumTransport'
 ]
@@ -104,10 +103,9 @@ def import_nozymag(uploaded_file):
     df_new = pd.read_excel(uploaded_file)
     df_new.columns = df_new.columns.str.strip()
     
-    # Gestion du NumeroAuto vers NumReception
+    # Mapping flexible
     if 'NumeroAuto' in df_new.columns and 'NumReception' not in df_new.columns:
         df_new = df_new.rename(columns={'NumeroAuto': 'NumReception'})
-        st.info("Mapping : 'NumeroAuto' utilisé comme 'NumReception'")
 
     required = ['NumReception', 'Magasin', 'Fournisseur']
     if not all(c in df_new.columns for c in required):
@@ -117,8 +115,15 @@ def import_nozymag(uploaded_file):
     df_existing = load_sheet_data(WS_DATA, COLUMNS_DATA)
     existing_ids = set(df_existing[KEY_DATA].astype(str))
     
+    total_lignes = len(df_new)
+    # Identification des doublons
+    df_duplicates = df_new[df_new['NumReception'].astype(str).isin(existing_ids)]
+    # Identification des nouvelles lignes
     df_to_add = df_new[~df_new['NumReception'].astype(str).isin(existing_ids)].copy()
     
+    nb_ajoutes = len(df_to_add)
+    nb_refuses = len(df_duplicates)
+
     if not df_to_add.empty:
         df_to_add['StatutBL'] = 'A_DEBALLER'
         for col in COLUMNS_DATA:
@@ -127,10 +132,13 @@ def import_nozymag(uploaded_file):
         
         df_to_add = df_to_add[COLUMNS_DATA].astype(str)
         if append_to_sheet(WS_DATA, df_to_add):
-            st.success(f"{len(df_to_add)} nouvelles réceptions ajoutées.")
-            st.rerun()
+            st.success(f"✅ Import terminé : {nb_ajoutes} ligne(s) ajoutée(s).")
+            if nb_refuses > 0:
+                st.warning(f"⚠️ {nb_refuses} ligne(s) refusée(s) car déjà présentes (doublons).")
+            st.balloons()
+            # On ne fait pas de rerun immédiat pour laisser l'utilisateur voir le message
     else:
-        st.warning("Toutes les lignes de ce fichier existent déjà dans la base.")
+        st.error(f"❌ Aucune donnée importée. Les {nb_refuses} lignes du fichier sont déjà enregistrées.")
 
 # --- 4. INTERFACE UTILISATEUR ---
 
@@ -140,11 +148,11 @@ def main():
     if 'page' not in st.session_state: st.session_state.page = 'accueil'
 
     with st.sidebar:
-        st.title("📦 Suivi Logistique Groupe Dumasdelage")
+        st.title("📦 Suivi Logistique")
         if st.button("🏠 Accueil", use_container_width=True): st.session_state.page = 'accueil'
         st.divider()
         st.write("**FLUX DE TRAVAIL**")
-        if st.button("1️⃣ Import Réception et Stockage Emplacement", use_container_width=True): st.session_state.page = 'p1'
+        if st.button("1️⃣ Import & Emplacement", use_container_width=True): st.session_state.page = 'p1'
         if st.button("2️⃣ Transporteurs", use_container_width=True): st.session_state.page = 'p2'
         if st.button("3️⃣ Déballage & Litiges", use_container_width=True): st.session_state.page = 'p3'
         if st.button("4️⃣ Historique Clôturé", use_container_width=True): st.session_state.page = 'p4'
@@ -163,10 +171,13 @@ def main():
     elif st.session_state.page == 'p1':
         st.header("1️⃣ Import Nozymag & Emplacements")
         
-        with st.expander("📥 Importer fichier Nozymag"):
+        with st.expander("📥 Importer fichier Nozymag", expanded=True):
             st.write("Le système accepte les colonnes 'NumReception' ou 'NumeroAuto'.")
             up = st.file_uploader("Fichier Excel", type=['xlsx'])
-            if up and st.button("Lancer l'import"): import_nozymag(up)
+            if up and st.button("Lancer l'import"): 
+                import_nozymag(up)
+                # Bouton pour rafraîchir après avoir lu le rapport
+                if st.button("Rafraîchir la table"): st.rerun()
 
         st.subheader("Saisie des emplacements (Statut: A Déballer)")
         df_p1 = df_data[df_data['StatutBL'] == 'A_DEBALLER'].copy()
@@ -174,14 +185,12 @@ def main():
         if df_p1.empty:
             st.info("Aucune réception en attente d'emplacement.")
         else:
-            # ICI : Affichage de TOUTES les colonnes importées
-            # Seule la colonne 'Emplacement' est éditable
+            # Ajout de 'Date Livré' dans la liste d'affichage
             cols_to_show = [
-                'NumReception', 'Magasin', 'Fournisseur', 'N° Fourn.', 
-                'Mt TTC', 'Date Livré', 'Qté', 'Collection', 'Num Facture', 'Emplacement'
+                'NumReception', 'Magasin', 'Fournisseur', 'Date Livré', 'N° Fourn.', 
+                'Mt TTC', 'Qté', 'Collection', 'Num Facture', 'Emplacement'
             ]
             
-            # On définit les colonnes non-éditables (tout sauf Emplacement)
             disabled_cols = [c for c in cols_to_show if c != 'Emplacement']
 
             edited = st.data_editor(
@@ -195,20 +204,20 @@ def main():
             
             if st.button("Enregistrer les emplacements"):
                 changes = st.session_state["p1_editor"].get("edited_rows", {})
-                if not changes:
-                    st.info("Aucune modification détectée.")
-                else:
+                if changes:
                     for idx_str, val in changes.items():
                         idx = int(idx_str)
                         rid = df_p1.iloc[idx][KEY_DATA]
                         update_gsheet_row(WS_DATA, KEY_DATA, rid, val)
                     st.success("Emplacements mis à jour.")
                     st.rerun()
+                else:
+                    st.info("Aucune modification à enregistrer.")
 
+    # ... (Les autres pages p2, p3, p4 restent identiques à votre code précédent)
     elif st.session_state.page == 'p2':
         st.header("2️⃣ Gestion des Transports")
         df_trans = load_sheet_data(WS_TRANSPORT, COLUMNS_TRANSPORT)
-        
         with st.expander("➕ Enregistrer un nouveau transporteur"):
             with st.form("new_trans"):
                 nt = st.text_input("Numéro de Transport (ID unique)")
@@ -219,7 +228,6 @@ def main():
                         append_to_sheet(WS_TRANSPORT, pd.DataFrame([{'NumTransport': nt, 'NomTransporteur': tr_name, 'NbPalettes': nb_p}]))
                         st.success("Transport enregistré.")
                     else: st.error("Le Numéro de Transport est obligatoire.")
-
         st.subheader("Associer Transport à Réception")
         col_rec, col_tr = st.columns(2)
         with col_rec:
@@ -227,7 +235,6 @@ def main():
             sel_rec = st.selectbox("Réception", active_receptions)
         with col_tr:
             sel_tr = st.selectbox("Transporteur", [""] + list(df_trans[KEY_TRANS].unique()))
-        
         if st.button("Lier"):
             update_gsheet_row(WS_DATA, KEY_DATA, sel_rec, {'NumTransport': sel_tr})
             st.success("Lien mis à jour.")
@@ -235,7 +242,6 @@ def main():
     elif st.session_state.page == 'p3':
         st.header("3️⃣ Déballage en cours")
         df_deballe = df_data[df_data['StatutBL'].isin(['A_DEBALLER', 'LITIGE'])].copy()
-
         if df_deballe.empty:
             st.info("Rien à déballer pour le moment.")
         else:
@@ -243,11 +249,9 @@ def main():
                 with st.container(border=True):
                     c1, c2, c3 = st.columns([3, 2, 2])
                     c1.markdown(f"**Réception: {row[KEY_DATA]}**\n\n{row['Fournisseur']} | Emplacement: `{row['Emplacement']}`")
-                    
                     with c2:
                         name = st.text_input("Déballeur", value=row['NomDeballage'], key=f"n_{row[KEY_DATA]}")
                         com = st.text_area("Com. Litige", value=row['Commentaire_litige'], key=f"c_{row[KEY_DATA]}", height=68)
-                    
                     with c3:
                         st.write(f"Statut: **{row['StatutBL']}**")
                         if st.button("✅ Terminer", key=f"t_{row[KEY_DATA]}"):
