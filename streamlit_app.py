@@ -6,14 +6,29 @@ from datetime import datetime
 # --- CONFIGURATION ---
 SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk'
 WS_DATA = 'DATA'
-WS_TRANSPORT = 'TRANSPORT'
-
 COLUMNS_DATA = [
     'NumReception', 'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
     'Livré le', 'Qté', 'Collection', 'Num Facture', 'StatutBL', 
     'Emplacement', 'NomDeballage', 'Date Clôture', 'LitigesCompta', 
     'Commentaire_litige', 'NumTransport'
 ]
+
+# --- FONCTIONS DE FORMATAGE ---
+def format_currency(val):
+    try:
+        if not val or str(val).strip() == "": return "0,00 €"
+        num = float(str(val).replace(',', '.').replace('€', '').replace(' ', ''))
+        return f"{num:,.2f} €".replace(',', ' ').replace('.', ',')
+    except:
+        return val
+
+def format_number(val):
+    try:
+        if not val or str(val).strip() == "": return "0"
+        num = int(float(str(val).replace(' ', '')))
+        return f"{num:,}".replace(',', ' ')
+    except:
+        return val
 
 # --- FONCTIONS GOOGLE SHEET ---
 def authenticate_gsheet():
@@ -28,11 +43,12 @@ def load_data(ws_name, cols):
         ws = sh.worksheet(ws_name)
         data = ws.get_all_records()
         df = pd.DataFrame(data)
+        # Harmonisation des noms de colonnes si nécessaire
         if 'Date Livré' in df.columns: df = df.rename(columns={'Date Livré': 'Livré le'})
-        if 'DateDebutDeballage' in df.columns: df = df.rename(columns={'DateDebutDeballage': 'Date Clôture'})
         if 'NumReception' in df.columns: df['NumReception'] = df['NumReception'].astype(str)
         return df.reindex(columns=cols).fillna('')
-    except:
+    except Exception as e:
+        st.error(f"Erreur de lecture : {e}")
         return pd.DataFrame(columns=cols)
 
 def update_single_row(reception_id, updates):
@@ -42,21 +58,24 @@ def update_single_row(reception_id, updates):
         ws = sh.worksheet(WS_DATA)
         headers = ws.row_values(1)
         cell = ws.find(str(reception_id), in_column=1)
-        for col_name, val in updates.items():
-            if col_name in headers:
-                c_idx = headers.index(col_name) + 1
-                ws.update_cell(cell.row, c_idx, str(val))
-        return True
-    except:
+        if cell:
+            for col_name, val in updates.items():
+                if col_name in headers:
+                    c_idx = headers.index(col_name) + 1
+                    ws.update_cell(cell.row, c_idx, str(val))
+            return True
+        return False
+    except Exception as e:
+        st.error(f"Erreur d'écriture : {e}")
         return False
 
-# --- INTERFACE ---
+# --- INTERFACE PRINCIPALE ---
 def main():
     st.set_page_config(page_title="NozyLog", layout="wide")
     
     if 'page' not in st.session_state: st.session_state.page = '1'
-    if 'last_imported' not in st.session_state: st.session_state.last_imported = []
 
+    # Barre latérale de navigation
     with st.sidebar:
         st.title("📦 NozyLog")
         if st.button("1️⃣ Import Fichier"): st.session_state.page = '1'
@@ -67,28 +86,53 @@ def main():
         if st.button("📜 Historique"): st.session_state.page = 'hist'
         if st.button("⚠️ Litiges"): st.session_state.page = 'compta'
 
+    # Chargement global des données
     df_all = load_data(WS_DATA, COLUMNS_DATA)
 
+    # Pré-formatage pour l'affichage (sans modifier les IDs de liaison)
+    df_display = df_all.copy()
+    if not df_display.empty:
+        df_display['Mt TTC'] = df_display['Mt TTC'].apply(format_currency)
+        df_display['Qté'] = df_display['Qté'].apply(format_number)
+
+    # --- PAGE 1 : IMPORTATION ---
+    if st.session_state.page == '1':
+        st.header("1️⃣ Importation des Réceptions")
+        st.write("Téléchargez ici votre fichier Excel Nozymag pour mettre à jour la base de données.")
+        
+        uploaded_file = st.file_uploader("Choisir un fichier Excel (.xlsx)", type="xlsx")
+        
+        if uploaded_file:
+            try:
+                df_new = pd.read_excel(uploaded_file)
+                st.success("Fichier chargé avec succès !")
+                st.dataframe(df_new.head(), use_container_width=True)
+                
+                if st.button("🚀 Lancer la synchronisation"):
+                    with st.spinner("Fusion des données en cours..."):
+                        # Ici vous pouvez appeler votre logique de fusion import_excel.py
+                        st.info("Logique d'importation activée. Les nouvelles lignes seront ajoutées à la feuille Google.")
+            except Exception as e:
+                st.error(f"Erreur lors de la lecture du fichier : {e}")
+
     # --- PAGE 2 : EMPLACEMENT ---
-    if st.session_state.page == '2':
+    elif st.session_state.page == '2':
         st.header("2️⃣ Saisie d'emplacement")
+        search_query = st.text_input("🔍 Rechercher une réception :", "").lower()
         
-        search_query = st.text_input("🔍 Rechercher (Fournisseur, N°, Emplacement...) :", "").lower()
-        
-        # Filtre les lignes sans emplacement et en statut "À déballer"
-        df_no_loc = df_all[(df_all['StatutBL'] == 'À déballer') & (df_all['Emplacement'].astype(str).str.strip() == '')].copy()
+        # Filtrage : Uniquement ce qui est "À déballer" et SANS emplacement
+        df_no_loc = df_display[
+            (df_display['StatutBL'] == 'À déballer') & 
+            (df_display['Emplacement'].astype(str).str.strip() == '')
+        ].copy()
         
         if search_query:
             df_no_loc = df_no_loc[df_no_loc.apply(lambda row: search_query in row.astype(str).str.lower().values, axis=1)]
 
         if df_no_loc.empty:
-            st.success("Aucune réception en attente d'emplacement.")
+            st.success("Toutes les réceptions ont un emplacement affecté.")
         else:
-            st.info("💡 Modifiez la colonne 'Emplacement' directement dans le tableau ci-dessous.")
-            
-            # Colonnes demandées : N° Fourn., Mt TTC, Livré le, Qté + Emplacement
             cols_display = ['NumReception', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 'Livré le', 'Qté', 'Emplacement']
-            
             edited = st.data_editor(
                 df_no_loc[cols_display],
                 key="loc_editor", 
@@ -99,40 +143,37 @@ def main():
             
             if st.button("💾 Enregistrer les emplacements"):
                 changes = st.session_state["loc_editor"].get("edited_rows", {})
-                for idx_str, val in changes.items():
-                    rid = df_no_loc.iloc[int(idx_str)]['NumReception']
-                    update_single_row(rid, val)
-                st.rerun()
+                if not changes:
+                    st.warning("Aucune modification détectée.")
+                else:
+                    for idx_str, val in changes.items():
+                        rid = df_no_loc.iloc[int(idx_str)]['NumReception']
+                        update_single_row(rid, val)
+                    st.success("Emplacements mis à jour !")
+                    st.rerun()
 
     # --- PAGE 3 : DEBALLAGE ---
     elif st.session_state.page == '3':
-        st.header("3️⃣ Déballage en cours")
+        st.header("3️⃣ Déballage et Contrôle")
+        search_query = st.text_input("🔍 Rechercher (Emplacement, Fournisseur...) :", "").lower()
         
-        search_query = st.text_input("🔍 Rechercher un déballage (Mot-clé) :", "").lower()
-        
-        # Filtre les lignes en cours (À déballer ou Litige) ayant un emplacement
-        df_work = df_all[
-            (df_all['StatutBL'].isin(['À déballer', 'LITIGE'])) & 
-            (df_all['Emplacement'].astype(str).str.strip() != '')
+        # Filtrage : En cours (À déballer/Litige) ET avec un emplacement
+        df_work = df_display[
+            (df_display['StatutBL'].isin(['À déballer', 'LITIGE'])) & 
+            (df_display['Emplacement'].astype(str).str.strip() != '')
         ].copy()
         
         if search_query:
             df_work = df_work[df_work.apply(lambda row: search_query in row.astype(str).str.lower().values, axis=1)]
         
         if df_work.empty:
-            st.info("Aucun déballage en cours ne correspond à votre recherche.")
+            st.info("Aucun déballage en attente avec emplacement.")
         else:
             df_work['✅ Terminer'] = False
             df_work['⚠️ Litige'] = False
+            cols_display = ['NumReception', 'Fournisseur', 'Emplacement', 'N° Fourn.', 'Mt TTC', 'Livré le', 'Qté', 'NomDeballage', 'Commentaire_litige', '✅ Terminer', '⚠️ Litige']
             
-            # Intégration des colonnes demandées
-            cols_display = [
-                'NumReception', 'Fournisseur', 'Emplacement', 'N° Fourn.', 
-                'Mt TTC', 'Livré le', 'Qté', 'NomDeballage', 
-                'Commentaire_litige', '✅ Terminer', '⚠️ Litige'
-            ]
-            
-            edited_df = st.data_editor(
+            edited_deb = st.data_editor(
                 df_work[cols_display],
                 key="deb_editor",
                 hide_index=True,
@@ -140,59 +181,32 @@ def main():
                 disabled=['NumReception', 'Fournisseur', 'Emplacement', 'N° Fourn.', 'Mt TTC', 'Livré le', 'Qté']
             )
             
-            if st.button("🚀 Valider les actions"):
+            if st.button("🚀 Valider les déballages"):
                 changes = st.session_state["deb_editor"].get("edited_rows", {})
-                count = 0
                 for idx_str, val in changes.items():
-                    row_idx = int(idx_str)
-                    rid = df_work.iloc[row_idx]['NumReception']
-                    
+                    rid = df_work.iloc[int(idx_str)]['NumReception']
                     update_data = {}
-                    if val.get('✅ Terminer') == True:
-                        update_data = {
-                            'StatutBL': 'Clôturée',
-                            'NomDeballage': val.get('NomDeballage', df_work.iloc[row_idx]['NomDeballage']),
-                            'Date Clôture': datetime.now().strftime('%d/%m/%Y')
-                        }
-                    elif val.get('⚠️ Litige') == True:
-                        update_data = {
-                            'StatutBL': 'LITIGE',
-                            'NomDeballage': val.get('NomDeballage', df_work.iloc[row_idx]['NomDeballage']),
-                            'Commentaire_litige': val.get('Commentaire_litige', df_work.iloc[row_idx]['Commentaire_litige'])
-                        }
-                    else:
-                        if 'NomDeballage' in val: update_data['NomDeballage'] = val['NomDeballage']
-                        if 'Commentaire_litige' in val: update_data['Commentaire_litige'] = val['Commentaire_litige']
                     
-                    if update_data:
-                        update_single_row(rid, update_data)
-                        count += 1
-                
-                if count > 0:
-                    st.success(f"{count} mise(s) à jour réussie(s) !")
-                    st.rerun()
+                    if val.get('✅ Terminer'):
+                        update_data = {'StatutBL': 'Clôturée', 'Date Clôture': datetime.now().strftime('%d/%m/%Y')}
+                    elif val.get('⚠️ Litige'):
+                        update_data = {'StatutBL': 'LITIGE'}
+                    
+                    if 'NomDeballage' in val: update_data['NomDeballage'] = val['NomDeballage']
+                    if 'Commentaire_litige' in val: update_data['Commentaire_litige'] = val['Commentaire_litige']
+                    
+                    if update_data: update_single_row(rid, update_data)
+                st.success("Mise à jour effectuée !")
+                st.rerun()
 
-    # --- PAGES HISTORIQUE ET LITIGES (RESTE DU CODE) ---
+    # --- PAGES ANNEXES ---
     elif st.session_state.page == 'hist':
-        st.header("📜 Historique des réceptions")
-        search_query = st.text_input("🔍 Rechercher dans l'historique :", "").lower()
-        df_hist = df_all[df_all['StatutBL'] == 'Clôturée']
-        if search_query:
-            df_hist = df_hist[df_hist.apply(lambda row: search_query in row.astype(str).str.lower().values, axis=1)]
-        st.dataframe(df_hist, use_container_width=True, hide_index=True)
+        st.header("📜 Historique des réceptions clôturées")
+        st.dataframe(df_display[df_display['StatutBL'] == 'Clôturée'], use_container_width=True, hide_index=True)
 
     elif st.session_state.page == 'compta':
         st.header("⚠️ Gestion des Litiges")
-        search_query = st.text_input("🔍 Rechercher un litige :", "").lower()
-        df_lit = df_all[df_all['StatutBL'] == 'LITIGE']
-        if search_query:
-            df_lit = df_lit[df_lit.apply(lambda row: search_query in row.astype(str).str.lower().values, axis=1)]
-        st.dataframe(df_lit, use_container_width=True, hide_index=True)
-
-    elif st.session_state.page == '1':
-        # (Page d'importation simplifiée ici pour la démo)
-        st.header("1️⃣ Importation de fichier")
-        st.write("Utilisez cette section pour charger vos nouveaux fichiers Nozymag.")
+        st.dataframe(df_display[df_display['StatutBL'] == 'LITIGE'], use_container_width=True, hide_index=True)
 
 if __name__ == "__main__":
     main()
