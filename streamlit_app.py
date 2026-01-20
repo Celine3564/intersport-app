@@ -103,12 +103,22 @@ def main():
     # --- PAGE 2 : EMPLACEMENT ---
     elif st.session_state.page == '2':
         st.header("2️⃣ Saisie d'emplacement")
-        # On montre tout ce qui est "À déballer" et qui n'a pas encore de zone
+        
+        # Filtre de recherche
+        search_query = st.text_input("🔍 Rechercher un Fournisseur ou N° Réception :", "").lower()
+        
         df_no_loc = df_all[(df_all['StatutBL'] == 'À déballer') & (df_all['Emplacement'].astype(str).str.strip() == '')]
         
+        if search_query:
+            df_no_loc = df_no_loc[
+                df_no_loc['Fournisseur'].str.lower().str.contains(search_query) | 
+                df_no_loc['NumReception'].str.lower().str.contains(search_query)
+            ]
+
         if df_no_loc.empty:
-            st.success("Aucune réception en attente d'emplacement.")
+            st.success("Aucune réception correspondante en attente d'emplacement.")
         else:
+            st.info("💡 Astuce : Survolez le tableau pour utiliser la loupe de recherche interne.")
             edited = st.data_editor(
                 df_no_loc[['NumReception', 'Fournisseur', 'Livré le', 'Emplacement']],
                 key="loc_editor", hide_index=True, use_container_width=True
@@ -120,22 +130,30 @@ def main():
                     update_single_row(rid, val)
                 st.rerun()
 
-    # --- PAGE 3 : DEBALLAGE (TABLEAU SIMPLE) ---
+    # --- PAGE 3 : DEBALLAGE ---
     elif st.session_state.page == '3':
         st.header("3️⃣ Déballage en cours")
-        # Filtrer : On ne montre que ce qui est "À déballer" ou "LITIGE"
+        
+        # Filtre de recherche
+        search_query = st.text_input("🔍 Rechercher par Fournisseur, Emplacement ou N° :", "").lower()
+        
         df_work = df_all[df_all['StatutBL'].isin(['À déballer', 'LITIGE'])].copy()
         
+        if search_query:
+            df_work = df_work[
+                df_work['Fournisseur'].str.lower().str.contains(search_query) | 
+                df_work['NumReception'].str.lower().str.contains(search_query) |
+                df_work['Emplacement'].str.lower().str.contains(search_query)
+            ]
+        
         if df_work.empty:
-            st.info("Aucun déballage à traiter.")
+            st.info("Aucun déballage correspondant à votre recherche.")
         else:
             st.write("Cochez 'Terminer' ou 'Litige' pour mettre à jour.")
             
-            # On crée des colonnes virtuelles pour l'action
             df_work['✅ Terminer'] = False
             df_work['⚠️ Litige'] = False
             
-            # Affichage du tableau éditable
             cols_to_show = ['NumReception', 'Fournisseur', 'Emplacement', 'NomDeballage', 'Commentaire_litige', '✅ Terminer', '⚠️ Litige']
             
             edited_df = st.data_editor(
@@ -143,7 +161,7 @@ def main():
                 key="deb_editor",
                 hide_index=True,
                 use_container_width=True,
-                disabled=['NumReception', 'Fournisseur', 'Emplacement'] # On ne change pas ces infos ici
+                disabled=['NumReception', 'Fournisseur', 'Emplacement']
             )
             
             if st.button("🚀 Valider les actions"):
@@ -153,7 +171,6 @@ def main():
                     row_idx = int(idx_str)
                     rid = df_work.iloc[row_idx]['NumReception']
                     
-                    # Logique de mise à jour
                     update_data = {}
                     if val.get('✅ Terminer') == True:
                         update_data = {
@@ -168,7 +185,6 @@ def main():
                             'Commentaire_litige': val.get('Commentaire_litige', df_work.iloc[row_idx]['Commentaire_litige'])
                         }
                     elif 'NomDeballage' in val or 'Commentaire_litige' in val:
-                        # Si on a juste changé le nom ou le commentaire sans cocher
                         update_data = val
                     
                     if update_data:
@@ -181,11 +197,19 @@ def main():
 
     elif st.session_state.page == 'hist':
         st.header("📜 Historique")
-        st.dataframe(df_all[df_all['StatutBL'] == 'Clôturée'], use_container_width=True, hide_index=True)
+        search_query = st.text_input("🔍 Rechercher dans l'historique :", "").lower()
+        df_hist = df_all[df_all['StatutBL'] == 'Clôturée']
+        if search_query:
+            df_hist = df_hist[df_hist.apply(lambda row: search_query in row.astype(str).str.lower().values, axis=1)]
+        st.dataframe(df_hist, use_container_width=True, hide_index=True)
 
     elif st.session_state.page == 'compta':
         st.header("⚠️ Litiges")
-        st.dataframe(df_all[df_all['StatutBL'] == 'LITIGE'], use_container_width=True, hide_index=True)
+        search_query = st.text_input("🔍 Rechercher dans les litiges :", "").lower()
+        df_lit = df_all[df_all['StatutBL'] == 'LITIGE']
+        if search_query:
+            df_lit = df_lit[df_lit.apply(lambda row: search_query in row.astype(str).str.lower().values, axis=1)]
+        st.dataframe(df_lit, use_container_width=True, hide_index=True)
 
 if __name__ == "__main__":
     main()
