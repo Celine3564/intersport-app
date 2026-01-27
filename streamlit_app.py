@@ -7,6 +7,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 # --- CONFIGURATION ---
 SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk'
 WS_DATA = 'DATA'
+# Liste exhaustive des colonnes
 COLUMNS_DATA = [
     'NumReception', 'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
     'Livré le', 'Qté', 'Collection', 'Num Facture', 'StatutBL', 
@@ -14,7 +15,6 @@ COLUMNS_DATA = [
     'Commentaire_litige', 'NumTransport'
 ]
 
-# --- FONCTIONS GOOGLE SHEET ---
 def authenticate_gsheet():
     creds = dict(st.secrets['gspread'])
     creds['private_key'] = creds['private_key'].replace('\\n', '\n')
@@ -27,14 +27,23 @@ def load_data(ws_name, cols):
         ws = sh.worksheet(ws_name)
         data = ws.get_all_records()
         df = pd.DataFrame(data)
-        if 'Date Livré' in df.columns: df = df.rename(columns={'Date Livré': 'Livré le'})
+        
+        # Nettoyage des noms de colonnes et gestion des dates
+        if 'Date Livré' in df.columns: 
+            df = df.rename(columns={'Date Livré': 'Livré le'})
+        
+        # Conversion des colonnes de dates en objets datetime pour le filtre Ag-Grid
+        date_cols = ['Livré le', 'Date Clôture']
+        for col in date_cols:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+        
         return df.reindex(columns=cols).fillna('')
     except Exception as e:
         st.error(f"Erreur de lecture : {e}")
         return pd.DataFrame(columns=cols)
 
 def update_multiple_rows(df_changes):
-    """Met à jour les lignes modifiées dans Google Sheet"""
     try:
         gc = authenticate_gsheet()
         sh = gc.open_by_key(SHEET_ID)
@@ -47,31 +56,62 @@ def update_multiple_rows(df_changes):
                 for col_name, val in row.items():
                     if col_name in headers and col_name != 'NumReception':
                         c_idx = headers.index(col_name) + 1
+                        # Conversion date en string pour GSheet si c'est un timestamp
+                        if isinstance(val, pd.Timestamp):
+                            val = val.strftime('%Y-%m-%d')
                         ws.update_cell(cell.row, c_idx, str(val))
         return True
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde : {e}")
         return False
 
-# --- CONFIGURATION DU TABLEAU EXCEL (AG-GRID) ---
+# --- CONFIGURATION DU TABLEAU AVEC FILTRES AVANCÉS ---
 def render_excel_grid(df, editable_cols=[]):
     gb = GridOptionsBuilder.from_dataframe(df)
     
-    # Activation du filtrage et du tri sur TOUTES les colonnes (style Excel)
+    # 1. Configuration par défaut (Filtres textuels partout avec barre flottante)
     gb.configure_default_column(
         resizable=True,
-        filterable=True,
         sortable=True,
+        filterable=True,
         editable=False,
-        groupable=True
+        filter='agTextColumnFilter',
+        floatingFilter=True, 
     )
     
-    # Configuration spécifique des colonnes éditables
-    for col in editable_cols:
-        gb.configure_column(col, editable=True, cellStyle={'background-color': '#f0f2f6'})
+    # 2. Configuration spécifique pour les colonnes de DATE
+    date_filter_params = {
+        "comparator": """function(filterLocalDateAtMidnight, cellValue) {
+            if (cellValue == null) return -1;
+            var dateParts = cellValue.split("-");
+            var cellDate = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]));
+            if (filterLocalDateAtMidnight.getTime() === cellDate.getTime()) return 0;
+            if (cellDate < filterLocalDateAtMidnight) return -1;
+            if (cellDate > filterLocalDateAtMidnight) return 1;
+        }"""
+    }
+    
+    date_columns = ['Livré le', 'Date Clôture']
+    for col in date_columns:
+        if col in df.columns:
+            gb.configure_column(
+                col, 
+                filter='agDateColumnFilter', 
+                filterParams=date_filter_params,
+                valueFormatter="x.value ? x.value.split('T')[0] : ''" # Affiche uniquement YYYY-MM-DD
+            )
 
-    # Options de filtrage avancées (texte, nombre, menus déroulants)
-    gb.configure_side_bar() # Ajoute une barre latérale pour les filtres complexes
+    # 3. Configuration des colonnes éditables
+    for col in editable_cols:
+        gb.configure_column(
+            col, 
+            editable=True, 
+            cellStyle={'background-color': '#e1f5fe', 'border': '1px solid #01579b'}
+        )
+
+    # Options de pagination et sélection
+    gb.configure_pagination(paginationAutoPageSize=True)
+    gb.configure_selection('single', use_checkbox=False)
     
     grid_options = gb.build()
     
@@ -80,75 +120,61 @@ def render_excel_grid(df, editable_cols=[]):
         gridOptions=grid_options,
         update_mode=GridUpdateMode.VALUE_CHANGED,
         data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-        fit_columns_on_grid_load=True,
-        theme='streamlit', # Thème propre
-        allow_unsafe_jscode=True
+        fit_columns_on_grid_load=False, # False pour permettre le défilement horizontal si bcp de cols
+        theme='balham', 
+        allow_unsafe_jscode=True,
+        height=500
     )
 
-# --- INTERFACE PRINCIPALE ---
 def main():
-    st.set_page_config(page_title="NozyLog - Excel Edition", layout="wide")
+    st.set_page_config(page_title="NozyLog - AgGrid Advanced Filters", layout="wide")
     
     if 'page' not in st.session_state: st.session_state.page = '2'
 
     with st.sidebar:
         st.title("📦 NozyLog")
-        st.info("Utilisez les icônes dans les titres de colonnes pour filtrer.")
-        if st.button("2️⃣ Emplacement"): st.session_state.page = '2'
-        if st.button("3️⃣ Déballage"): st.session_state.page = '3'
-        st.divider()
-        if st.button("📜 Historique"): st.session_state.page = 'hist'
+        st.markdown("---")
+        if st.button("📍 2. Emplacement", use_container_width=True): st.session_state.page = '2'
+        if st.button("⚙️ 3. Déballage", use_container_width=True): st.session_state.page = '3'
+        if st.button("📜 Historique", use_container_width=True): st.session_state.page = 'hist'
 
     df_all = load_data(WS_DATA, COLUMNS_DATA)
 
-    # --- PAGE 2 : EMPLACEMENT ---
     if st.session_state.page == '2':
-        st.header("📍 Saisie d'emplacement (Filtrage Excel)")
-        
-        # Données à traiter
-        df_target = df_all[
-            (df_all['StatutBL'] == 'À déballer') & 
-            (df_all['Emplacement'] == '')
-        ].copy()
+        st.subheader("📍 Attribution des Emplacements")
+        # Filtrage : On montre ce qui n'a pas encore d'emplacement
+        df_target = df_all[(df_all['StatutBL'] != 'Clôturé') & (df_all['Emplacement'] == '')].copy()
 
         if df_target.empty:
-            st.success("Toutes les réceptions ont un emplacement !")
+            st.success("Toutes les réceptions ont un emplacement.")
         else:
-            st.write("Modifiez la colonne 'Emplacement' directement dans le tableau.")
-            # Affichage du tableau AgGrid
-            grid_response = render_excel_grid(
-                df_target[['NumReception', 'Fournisseur', 'Mt TTC', 'Livré le', 'Qté', 'Emplacement']],
+            st.info("Filtrez par date ou par fournisseur via les sélecteurs sous les titres.")
+            grid_res = render_excel_grid(
+                df_target[['NumReception', 'Fournisseur', 'Livré le', 'Qté', 'Emplacement']],
                 editable_cols=['Emplacement']
             )
             
-            updated_df = grid_response['data']
-            
-            if st.button("💾 Enregistrer les modifications"):
-                # On compare pour ne mettre à jour que ce qui a changé
-                update_multiple_rows(updated_df)
-                st.success("Emplacements mis à jour !")
-                st.rerun()
+            if st.button("💾 Sauvegarder les emplacements"):
+                if update_multiple_rows(grid_res['data']):
+                    st.success("Mise à jour réussie !")
+                    st.rerun()
 
-    # --- PAGE 3 : DEBALLAGE ---
     elif st.session_state.page == '3':
-        st.header("📦 Déballage et Contrôle")
-        df_target = df_all[df_all['StatutBL'].isin(['À déballer', 'LITIGE'])].copy()
+        st.subheader("⚙️ Zone de Déballage")
+        df_target = df_all[df_all['StatutBL'].isin(['À déballer', 'LITIGE', 'En cours'])].copy()
         
-        st.write("Filtrez par Fournisseur ou Emplacement via les en-têtes.")
-        grid_response = render_excel_grid(
-            df_target[['NumReception', 'Fournisseur', 'Emplacement', 'Mt TTC', 'StatutBL', 'NomDeballage', 'Commentaire_litige']],
+        grid_res = render_excel_grid(
+            df_target[['NumReception', 'Fournisseur', 'Emplacement', 'StatutBL', 'NomDeballage', 'Commentaire_litige']],
             editable_cols=['StatutBL', 'NomDeballage', 'Commentaire_litige']
         )
         
-        if st.button("🚀 Valider le déballage"):
-            update_multiple_rows(grid_response['data'])
-            st.success("Données de déballage sauvegardées.")
-            st.rerun()
+        if st.button("🚀 Valider les modifications"):
+            if update_multiple_rows(grid_res['data']):
+                st.success("Données enregistrées.")
+                st.rerun()
 
-    # --- HISTORIQUE ---
     elif st.session_state.page == 'hist':
-        st.header("📜 Historique Complet")
-        st.write("Tableau interactif : Glissez les titres pour trier ou filtrer.")
+        st.subheader("📜 Historique complet")
         render_excel_grid(df_all)
 
 if __name__ == "__main__":
