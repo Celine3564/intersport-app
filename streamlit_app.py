@@ -170,10 +170,26 @@ def main():
     # --- Lié à la page REFUS  ---
     elif st.session_state.page == 'refus':
         st.header("🚚 Saisir un refus de marchandise ⚠️")
+        grid_res = render_custom_grid(
+            df_all[['NumReception', 'Fournisseur', 'Livré le', 'NumTransport', 'StatutBL']],
+            editable_cols=['NumTransport']
+        )
+        
+        if st.button("💾 Enregistrer les modifications de transport"):
+            # Fusionner les modifs avec le dataframe principal
+            df_updated = df_all.copy()
+            new_data = pd.DataFrame(grid_res['data'])
+            for idx, row in new_data.iterrows():
+                df_updated.loc[df_updated['NumReception'] == row['NumReception'], 'NumTransport'] = row['NumTransport']
+            
+            if save_data_to_gsheet(df_updated):
+                st.success("Transports mis à jour !")
+                st.rerun()
 
+    
     # --- PAGE 2 : SUIVI TRANSPORT ---
     # --- Lié à la page TRANSPORT  ---
-elif st.session_state.page == 'transport':
+    elif st.session_state.page == 'transport':
         st.header("🚚 Suivi des Numéros de Transport")
         # On affiche tout, avec focus sur NumTransport
         grid_res = render_custom_grid(
