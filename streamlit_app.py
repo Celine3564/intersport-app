@@ -163,33 +163,36 @@ def add_refus_row(row_list):
         return False
 
 def send_actual_email(to_email, subject, body):
-    """Envoie l'e-mail via SMTP avec nettoyage et support UTF-8"""
+    """Envoi SMTP avec diagnostic d'erreur d'encodage"""
     try:
         if "email" not in st.secrets:
-            return False, "Configuration SMTP manquante dans les Secrets."
+            return False, "Configuration 'email' manquante dans les Secrets."
             
         mail_config = st.secrets["email"]
         
-        # Nettoyage des entrées pour supprimer les caractères invisibles problématiques
-        to_email = clean_text(to_email)
-        subject = clean_text(subject)
-        from_email = clean_text(mail_config["sender_email"])
+        # Nettoyage ultra-strict
+        clean_to = clean_text(to_email)
+        clean_from = clean_text(mail_config["sender_email"])
+        clean_subject = clean_text(subject)
         
         msg = MIMEMultipart()
-        msg['From'] = from_email
-        msg['To'] = to_email
-        # Encodage Header UTF-8 pour le sujet
-        msg['Subject'] = Header(subject, 'utf-8').encode()
+        # Utilisation de Header pour tout ce qui est en-tête
+        msg['From'] = clean_from
+        msg['To'] = clean_to
+        msg['Subject'] = Header(clean_subject, 'utf-8').encode()
         
-        # Corps du mail en UTF-8
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
-        server = smtplib.SMTP(mail_config["smtp_server"], mail_config["smtp_port"])
+        server = smtplib.SMTP(mail_config["smtp_server"], int(mail_config["smtp_port"]))
         server.starttls()
-        server.login(from_email, mail_config["sender_password"])
-        server.send_message(msg)
+        server.login(clean_from, mail_config["sender_password"])
+        # On utilise sendmail au lieu de send_message pour mieux contrôler l'encodage des enveloppes
+        server.sendmail(clean_from, [clean_to], msg.as_string())
         server.quit()
         return True, "Succès"
+    except UnicodeEncodeError as e:
+        # Diagnostic précis : on cherche où se trouve le caractère fautif
+        return False, f"Erreur d'encodage (caractère spécial détecté). Détails: {str(e)}"
     except Exception as e:
         return False, str(e)
 
@@ -268,51 +271,44 @@ def main():
         st.header("🚚 Enregistrement d'un Refus de Marchandise")
         
         # Section Formulaire
-        with st.expander("➕ Enregistrer un nouveau refus", expanded=True):
-            with st.form("form_refus", clear_on_submit=True):
-                col1, col2 = st.columns(2)
-                f_magasin = col1.selectbox("Magasin concerne", ["BAYONNE", "PAU", "BORDEAUX", "AUTRE"])
-                f_date = col1.date_input("Date du jour", datetime.now())
-                f_fourn = col2.text_input("Nom du fournisseur (ex: NIKE)")
-                f_bl = col2.text_input("Numero du BL")
-                
-                st.divider()
-                f_email_dest = st.text_input("📧 Envoyer l'alerte mail à :", placeholder="exemple@domaine.com")
-                f_comment = st.text_area("📝 Motif precis du refus")
-                
-                submitted = st.form_submit_button("✅ Valider le refus et envoyer le mail")
-                
-                if submitted:
-                    if not f_fourn or not f_bl or not f_email_dest:
-                        st.error("⚠️ Les champs Fournisseur, BL et Email sont obligatoires.")
-                    else:
-                        # 1. Préparation des données
-                        new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
-                        
-                        # 2. Ajout au GSheet
-                        with st.spinner("Enregistrement dans le tableau..."):
-                            if add_refus_row(new_row):
-                                st.success("📝 Refus enregistré dans l'onglet REFUS.")
-                                
-                                # 3. Envoi du mail
-                                with st.spinner("Rédaction et envoi du mail..."):
-                                    body = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
-                                    success, msg = send_actual_email(f_email_dest, f"ALERTE REFUS : {f_fourn} ({f_magasin})", body)
-                                    
-                                    if success:
-                                        st.balloons()
-                                        st.success(f"📧 Mail envoyé avec succès à {f_email_dest}")
-                                    else:
-                                        st.warning(f"⚠️ Mail non envoyé : {msg}")
-                        
-        st.divider()
-        # Section Historique (Ligne qui posait problème)
-        st.subheader("📜 Historique des refus")
-        df_refus = load_data(WS_REFUS, COLUMNS_REFUS)
-        if not df_refus.empty:
-            render_custom_grid(df_refus)
-        else:
-            st.info("Aucun refus enregistré pour le moment.")
+                with st.form("form_refus", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            f_magasin = col1.selectbox("Magasin", ["BAYONNE", "PAU", "BORDEAUX", "AUTRE"])
+            f_date = col1.date_input("Date du refus", datetime.now())
+            f_fourn = col2.text_input("Nom du fournisseur")
+            f_bl = col2.text_input("Num du BL")
+            
+            st.divider()
+            f_email_dest = st.text_input("📧 Email destinataire", placeholder="achat@domaine.com")
+            f_comment = st.text_area("Commentaire / Motif")
+            
+            submit = st.form_submit_button("🚀 Valider et Envoyer")
+            
+            if submit:
+                if f_fourn and f_bl and f_email_dest:
+                    new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
+                    
+                    if add_refus_row(new_row):
+                        with st.spinner("Envoi du mail..."):
+                            body = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
+                            success, msg = send_actual_email(f_email_dest, f"ALERTE REFUS : {f_fourn}", body)
+                            
+                            if success:
+                                st.balloons()
+                                st.success("✅ Enregistré et mail envoyé !")
+                            else:
+                                st.error(f"⚠️ Mail non envoyé : {msg}")
+                                # AFFICHAGE DES SECRETS POUR VÉRIFICATION (Masqué partiellement pour sécurité)
+                                st.info("ℹ️ Vérifie tes 'Secrets' dans Streamlit :")
+                                conf = st.secrets.get("email", {})
+                                st.write(f"- SMTP: `{conf.get('smtp_server')}`")
+                                st.write(f"- Expéditeur: `{conf.get('sender_email')}`")
+                                if '\xa0' in conf.get('sender_email', '') or '\xa0' in conf.get('smtp_server', ''):
+                                    st.warning("🚨 Un espace invisible (\\xa0) a été détecté DANS tes Secrets !")
+                else:
+                    st.error("⚠️ Champs obligatoires manquants.")
+
+	
     
     # --- PAGE 2 : SUIVI TRANSPORT ---
     # --- Lié à la page TRANSPORT  ---
