@@ -163,39 +163,38 @@ def add_refus_row(row_list):
         return False
 
 def send_actual_email(to_email, subject, body):
-    """Envoi SMTP avec diagnostic d'erreur d'encodage"""
+    """Envoi SMTP avec nettoyage de sécurité renforcé"""
     try:
         if "email" not in st.secrets:
             return False, "Configuration 'email' manquante dans les Secrets."
             
         mail_config = st.secrets["email"]
         
-        # Nettoyage ultra-strict
-        clean_to = clean_text(to_email)
-        clean_from = clean_text(mail_config["sender_email"])
-        clean_subject = clean_text(subject)
+        # Nettoyage ultra-strict des paramètres de connexion (on enlève les \xa0 ici)
+        clean_to = extreme_clean(to_email)
+        clean_from = extreme_clean(mail_config["sender_email"])
+        clean_password = extreme_clean(mail_config["sender_password"])
+        clean_smtp = extreme_clean(mail_config["smtp_server"])
         
         msg = MIMEMultipart()
-        # Utilisation de Header pour tout ce qui est en-tête
         msg['From'] = clean_from
         msg['To'] = clean_to
-        msg['Subject'] = Header(clean_subject, 'utf-8').encode()
+        # Le sujet peut contenir des accents, donc on utilise Header UTF-8
+        msg['Subject'] = Header(subject, 'utf-8').encode()
         
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
-        server = smtplib.SMTP(mail_config["smtp_server"], int(mail_config["smtp_port"]))
+        # Connexion
+        server = smtplib.SMTP(clean_smtp, int(mail_config["smtp_port"]))
         server.starttls()
-        server.login(clean_from, mail_config["sender_password"])
-        # On utilise sendmail au lieu de send_message pour mieux contrôler l'encodage des enveloppes
+        server.login(clean_from, clean_password)
+        
+        # Envoi
         server.sendmail(clean_from, [clean_to], msg.as_string())
         server.quit()
         return True, "Succès"
-    except UnicodeEncodeError as e:
-        # Diagnostic précis : on cherche où se trouve le caractère fautif
-        return False, f"Erreur d'encodage (caractère spécial détecté). Détails: {str(e)}"
     except Exception as e:
         return False, str(e)
-
 
 def generate_mail_content(magasin, fournisseur, bl, commentaire):
     """Utilise Gemini pour rédiger un mail propre"""
@@ -207,6 +206,17 @@ def generate_mail_content(magasin, fournisseur, bl, commentaire):
         return response.json()['candidates'][0]['content']['parts'][0]['text']
     except:
         return f"Madame, Monsieur,\n\nNous vous informons du refus de la livraison du fournisseur {fournisseur} ce jour au magasin de {magasin} (BL n°{bl}).\n\nMotif : {commentaire}\n\nCordialement,\nL'équipe Réception."
+
+def extreme_clean(text):
+    """Supprime radicalement les espaces invisibles et caractères non-ASCII"""
+    if not isinstance(text, str):
+        return str(text)
+    # Remplace l'espace insécable (\xa0) par un espace standard
+    text = text.replace('\xa0', ' ')
+    # Supprime tous les caractères qui ne sont pas des lettres, chiffres, ponctuation standard ou espaces
+    text = re.sub(r'[^\x20-\x7E]', '', text)
+    return text.strip()
+
 
         
 
