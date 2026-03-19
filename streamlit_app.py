@@ -20,7 +20,7 @@ COLUMNS_DATA = [
 ]
 
 # Colonnes basées l'onglet REFUS
-COLUMNS_REFUS = ['MAGASIN', 'Date du refus', 'Nom du fournisseur', 'Num du BL','Type de marchandise', 'Acheteur ','Commentaire des refus']
+COLUMNS_REFUS = ['MAGASIN', 'Date du refus', 'Nom du fournisseur', 'Num du BL','Commentaire du refus']
 
 # --- FONCTIONS TECHNIQUES ---
 
