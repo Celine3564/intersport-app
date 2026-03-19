@@ -238,8 +238,8 @@ def main():
                     st.success("Données enregistrées.")
                     st.rerun()
 
-    # --- PAGE 3 : DÉBALLAGE & LITIGES ---
-    elif st.session_state.page == '3':
+    # --- PAGE 6et7 : DÉBALLAGE & LITIGES ---
+    elif st.session_state.page == '6':
         st.header("⚙️ Suivi du Déballage & Gestion des Litiges")
         df_all = load_data(WS_DATA, COLUMNS_DATA)
         # On filtre pour exclure les dossiers clôturés
