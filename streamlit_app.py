@@ -246,39 +246,54 @@ def main():
     # --- PAGE REFUS DE MARCHANDISE---
     # --- Lié à la page REFUS  ---
     elif st.session_state.page == 'refus':
-        st.header("🚚 Gestion des Refus de Marchandise")
+        st.header("🚚 Enregistrement d'un Refus de Marchandise")
         
-        # Section 1 : Formulaire d'ajout
+        # Section Formulaire
         with st.expander("➕ Enregistrer un nouveau refus", expanded=True):
-            with st.form("form_refus"):
+            with st.form("form_refus", clear_on_submit=True):
                 col1, col2 = st.columns(2)
-                f_magasin = col1.selectbox("Magasin", ["BAYONNE", "AUTRE"])
-                f_date = col1.date_input("Date du refus", datetime.now())
-                f_fourn = col2.text_input("Nom du fournisseur")
-                f_bl = col2.text_input("Num du BL")
-                f_comment = st.text_area("Commentaire du refus")
+                f_magasin = col1.selectbox("Magasin concerne", ["BAYONNE", "PAU", "BORDEAUX", "AUTRE"])
+                f_date = col1.date_input("Date du jour", datetime.now())
+                f_fourn = col2.text_input("Nom du fournisseur (ex: NIKE)")
+                f_bl = col2.text_input("Numero du BL")
                 
-                submit = st.form_submit_button("🚀 Valider et Envoyer Mail")
+                st.divider()
+                f_email_dest = st.text_input("📧 Envoyer l'alerte mail à :", placeholder="exemple@domaine.com")
+                f_comment = st.text_area("📝 Motif precis du refus")
                 
-                if submit:
-                    if f_fourn and f_bl:
-                        new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
-                        if add_refus_row(new_row):
-                            st.success("✅ Refus enregistré dans Google Sheets")
-                            
-                            # Génération du contenu du mail
-                            with st.spinner("Génération de l'e-mail..."):
-                                content = send_refus_email(f_magasin, f_fourn, f_bl, f_comment)
-                                st.info("📬 Aperçu de l'e-mail envoyé :")
-                                st.code(content, language="markdown")
-                                st.toast("E-mail envoyé au service concerné !")
+                submitted = st.form_submit_button("✅ Valider le refus et envoyer le mail")
+                
+                if submitted:
+                    if not f_fourn or not f_bl or not f_email_dest:
+                        st.error("⚠️ Les champs Fournisseur, BL et Email sont obligatoires.")
                     else:
-                        st.warning("Veuillez remplir au moins le fournisseur et le numéro de BL.")
-
-        # Section 2 : Historique des refus
+                        # 1. Préparation des données
+                        new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
+                        
+                        # 2. Ajout au GSheet
+                        with st.spinner("Enregistrement dans le tableau..."):
+                            if add_refus_row(new_row):
+                                st.success("📝 Refus enregistré dans l'onglet REFUS.")
+                                
+                                # 3. Envoi du mail
+                                with st.spinner("Rédaction et envoi du mail..."):
+                                    body = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
+                                    success, msg = send_actual_email(f_email_dest, f"ALERTE REFUS : {f_fourn} ({f_magasin})", body)
+                                    
+                                    if success:
+                                        st.balloons()
+                                        st.success(f"📧 Mail envoyé avec succès à {f_email_dest}")
+                                    else:
+                                        st.warning(f"⚠️ Mail non envoyé : {msg}")
+                        
+        st.divider()
+        # Section Historique (Ligne qui posait problème)
         st.subheader("📜 Historique des refus")
         df_refus = load_data(WS_REFUS, COLUMNS_REFUS)
-        render_custom_grid(df_refus)
+        if not df_refus.empty:
+            render_custom_grid(df_refus)
+        else:
+            st.info("Aucun refus enregistré pour le moment.")
     
     # --- PAGE 2 : SUIVI TRANSPORT ---
     # --- Lié à la page TRANSPORT  ---
