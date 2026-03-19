@@ -29,13 +29,6 @@ COLUMNS_REFUS = ['MAGASIN', 'Date du refus', 'Nom du fournisseur', 'Num du BL','
 				
 
 # --- FONCTIONS TECHNIQUES ---
-def clean_text(text):
-    """Nettoie les caractères spéciaux invisibles comme les espaces insécables"""
-    if not isinstance(text, str):
-        return str(text)
-    # Remplace l'espace insécable (\xa0) par un espace standard
-    return text.replace('\xa0', ' ').strip()
-
 def authenticate_gsheet():
     try:
         if 'gspread' not in st.secrets:
@@ -164,14 +157,14 @@ def add_refus_row(row_list):
         return False
 
 def send_actual_email(to_email, subject, body):
-    """Envoi SMTP avec nettoyage de sécurité renforcé"""
+    """Envoi SMTP sécurisé et nettoyé"""
     try:
         if "email" not in st.secrets:
-            return False, "Configuration 'email' manquante dans les Secrets."
+            return False, "Config e-mail manquante."
             
         mail_config = st.secrets["email"]
         
-        # Nettoyage ultra-strict des paramètres de connexion (on enlève les \xa0 ici)
+        # Nettoyage strict pour la connexion
         clean_to = extreme_clean(to_email)
         clean_from = extreme_clean(mail_config["sender_email"])
         clean_password = extreme_clean(mail_config["sender_password"])
@@ -180,17 +173,13 @@ def send_actual_email(to_email, subject, body):
         msg = MIMEMultipart()
         msg['From'] = clean_from
         msg['To'] = clean_to
-        # Le sujet peut contenir des accents, donc on utilise Header UTF-8
         msg['Subject'] = Header(subject, 'utf-8').encode()
         
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
-        # Connexion
         server = smtplib.SMTP(clean_smtp, int(mail_config["smtp_port"]))
         server.starttls()
         server.login(clean_from, clean_password)
-        
-        # Envoi
         server.sendmail(clean_from, [clean_to], msg.as_string())
         server.quit()
         return True, "Succès"
@@ -198,25 +187,22 @@ def send_actual_email(to_email, subject, body):
         return False, str(e)
 
 def generate_mail_content(magasin, fournisseur, bl, commentaire):
-    """Utilise Gemini pour rédiger un mail propre"""
-    prompt = f"Rédige un e-mail professionnel très court pour un refus de marchandise. Magasin: {magasin}, Fournisseur: {fournisseur}, BL: {bl}, Motif: {commentaire}. Signé: L'équipe Réception."
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    prompt = f"Rédige un mail pro court: Refus de marchandise. Magasin {magasin}, Fournisseur {fournisseur}, BL {bl}. Motif: {commentaire}."
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
     try:
-        response = requests.post(url, json=payload, timeout=10)
+        response = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=10)
         return response.json()['candidates'][0]['content']['parts'][0]['text']
     except:
-        return f"Madame, Monsieur,\n\nNous vous informons du refus de la livraison du fournisseur {fournisseur} ce jour au magasin de {magasin} (BL n°{bl}).\n\nMotif : {commentaire}\n\nCordialement,\nL'équipe Réception."
+        return f"Refus du BL {bl} ({fournisseur}) au magasin {magasin}.\nMotif : {commentaire}"
+
 
 def extreme_clean(text):
-    """Supprime radicalement les espaces invisibles et caractères non-ASCII"""
+    """Supprime radicalement les espaces invisibles et caractères non-ASCII pour le protocole SMTP"""
     if not isinstance(text, str):
         return str(text)
-    # Remplace l'espace insécable (\xa0) par un espace standard
     text = text.replace('\xa0', ' ')
-    # Supprime tous les caractères qui ne sont pas des lettres, chiffres, ponctuation standard ou espaces
-    text = re.sub(r'[^\x20-\x7E]', '', text)
-    return text.strip()
+    # Garde uniquement les caractères imprimables standards pour les paramètres de connexion
+    return re.sub(r'[^\x20-\x7E]', '', text).strip()
 
 
         
@@ -279,45 +265,39 @@ def main():
     # --- PAGE REFUS DE MARCHANDISE---
     # --- Lié à la page REFUS  ---
     elif st.session_state.page == 'refus':
-        st.header("🚚 Enregistrement d'un Refus de Marchandise")
+        st.header("🚚 Refus de Marchandise")
         
         # Section Formulaire
         with st.form("form_refus", clear_on_submit=True):
             col1, col2 = st.columns(2)
-            f_magasin = col1.selectbox("Magasin", ["BAYONNE", "PAU", "BORDEAUX", "AUTRE"])
+            f_magasin = col1.selectbox("Magasin", ["BAYONNE", "BIDART", "URRUGNE", "PMI"])
             f_date = col1.date_input("Date du refus", datetime.now())
             f_fourn = col2.text_input("Nom du fournisseur")
             f_bl = col2.text_input("Num du BL")
+        
+	        st.divider()
+	        f_email_dest = st.text_input("📧 Envoyer l'alerte e-mail à :", placeholder="exemple@reseau-intersport.fr")
+	        f_comment = st.text_area("Motif détaillé du refus")
+        
             
-            st.divider()
-            f_email_dest = st.text_input("📧 Email destinataire", placeholder="achat@domaine.com")
-            f_comment = st.text_area("Commentaire / Motif")
-            
-            submit = st.form_submit_button("🚀 Valider et Envoyer")
-            
-            if submit:
-                if f_fourn and f_bl and f_email_dest:
-                    new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
-                    
-                    if add_refus_row(new_row):
-                        with st.spinner("Envoi du mail..."):
-                            body = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
-                            success, msg = send_actual_email(f_email_dest, f"ALERTE REFUS : {f_fourn}", body)
-                            
-                            if success:
-                                st.balloons()
-                                st.success("✅ Enregistré et mail envoyé !")
-                            else:
-                                st.error(f"⚠️ Mail non envoyé : {msg}")
-                                # AFFICHAGE DES SECRETS POUR VÉRIFICATION (Masqué partiellement pour sécurité)
-                                st.info("ℹ️ Vérifie tes 'Secrets' dans Streamlit :")
-                                conf = st.secrets.get("email", {})
-                                st.write(f"- SMTP: `{conf.get('smtp_server')}`")
-                                st.write(f"- Expéditeur: `{conf.get('sender_email')}`")
-                                if '\xa0' in conf.get('sender_email', '') or '\xa0' in conf.get('smtp_server', ''):
-                                    st.warning("🚨 Un espace invisible (\\xa0) a été détecté DANS tes Secrets !")
-                else:
-                    st.error("⚠️ Champs obligatoires manquants.")
+            submit = st.form_submit_button("🚀 Enregistrer et Envoyer le mail")
+			            
+			if submit:
+			            if f_fourn and f_bl and f_email_dest:
+			                new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
+			                
+			                with st.spinner("Traitement en cours..."):
+			                    if add_refus_row(new_row):
+			                        body = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
+			                        success, msg = send_actual_email(f_email_dest, f"ALERTE REFUS : {f_fourn}", body)
+			                        
+			                        if success:
+			                            st.balloons()
+			                            st.success(f"✅ Refus enregistré et e-mail envoyé à {f_email_dest}")
+			                        else:
+			                            st.warning(f"✅ Enregistré dans GSheet, mais l'e-mail a échoué : {msg}")
+			            else:
+			                st.error("⚠️ Veuillez remplir le Fournisseur, le BL et l'Email.")
 
 	
     
