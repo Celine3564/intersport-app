@@ -28,15 +28,23 @@ COLUMNS_REFUS = ['MAGASIN', 'Date du refus', 'Nom du fournisseur', 'Num du BL','
 				
 
 # --- FONCTIONS TECHNIQUES ---
+def clean_text(text):
+    """Nettoie les caractères spéciaux invisibles comme les espaces insécables"""
+    if not isinstance(text, str):
+        return str(text)
+    # Remplace l'espace insécable (\xa0) par un espace standard
+    return text.replace('\xa0', ' ').strip()
 
 def authenticate_gsheet():
-    """Authentification via Streamlit Secrets"""
     try:
+        if 'gspread' not in st.secrets:
+            st.error("❌ Les secrets 'gspread' ne sont pas configurés dans Streamlit Cloud.")
+            return None
         creds = dict(st.secrets['gspread'])
         creds['private_key'] = creds['private_key'].replace('\\n', '\n')
         return gspread.service_account_from_dict(creds)
     except Exception as e:
-        st.error(f"Erreur d'authentification : {e}")
+        st.error(f"❌ Erreur d'authentification : {e}")
         return None
 
 def load_data(ws_name, cols):
@@ -85,7 +93,6 @@ def save_data_to_gsheet(df_updated):
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde : {e}")
         return False
-
 
 
 # --- UI : COMPOSANT GRILLE ---
@@ -156,25 +163,30 @@ def add_refus_row(row_list):
         return False
 
 def send_actual_email(to_email, subject, body):
-    """Envoie l'e-mail via SMTP avec support complet des accents et caractères spéciaux"""
+    """Envoie l'e-mail via SMTP avec nettoyage et support UTF-8"""
     try:
         if "email" not in st.secrets:
             return False, "Configuration SMTP manquante dans les Secrets."
             
         mail_config = st.secrets["email"]
         
+        # Nettoyage des entrées pour supprimer les caractères invisibles problématiques
+        to_email = clean_text(to_email)
+        subject = clean_text(subject)
+        from_email = clean_text(mail_config["sender_email"])
+        
         msg = MIMEMultipart()
-        msg['From'] = mail_config["sender_email"]
+        msg['From'] = from_email
         msg['To'] = to_email
-        # Encodage du sujet pour éviter l'erreur ascii sur les caractères comme \xa0
+        # Encodage Header UTF-8 pour le sujet
         msg['Subject'] = Header(subject, 'utf-8').encode()
         
-        # Encodage du corps du mail en utf-8
+        # Corps du mail en UTF-8
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
         server = smtplib.SMTP(mail_config["smtp_server"], mail_config["smtp_port"])
         server.starttls()
-        server.login(mail_config["sender_email"], mail_config["sender_password"])
+        server.login(from_email, mail_config["sender_password"])
         server.send_message(msg)
         server.quit()
         return True, "Succès"
