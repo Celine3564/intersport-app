@@ -12,7 +12,7 @@ WS_DATA = 'DATA'
 COLUMNS_DATA = [
     'NumReception', 'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
     'Livré le', 'Qté', 'Collection', 'Num Facture', 'StatutBL', 
-    'Emplacement', 'NomDeballage', 'Date Clôture', 'LitigesCompta', 
+    'Emplacement', 'NomDeballage', 'DateClotureDeballage', 'LitigesCompta', 
     'Commentaire_litige', 'NumTransport'
 ]
 
@@ -20,96 +20,84 @@ COLUMNS_DATA = [
 
 def authenticate_gsheet():
     """Authentification via Streamlit Secrets"""
-    creds = dict(st.secrets['gspread'])
-    creds['private_key'] = creds['private_key'].replace('\\n', '\n')
-    return gspread.service_account_from_dict(creds)
+    try:
+        creds = dict(st.secrets['gspread'])
+        creds['private_key'] = creds['private_key'].replace('\\n', '\n')
+        return gspread.service_account_from_dict(creds)
+    except Exception as e:
+        st.error(f"Erreur d'authentification : {e}")
+        return None
 
-def load_data(ws_name, cols):
-    """Chargement des données avec formatage des dates pour Ag-Grid"""
+def load_data(ws_name):
+    """Chargement des données avec formatage"""
     try:
         gc = authenticate_gsheet()
+        if not gc: return pd.DataFrame(columns=COLUMNS_DATA)
         sh = gc.open_by_key(SHEET_ID)
         ws = sh.worksheet(ws_name)
         data = ws.get_all_records()
         df = pd.DataFrame(data)
         
-        # Renommer si nécessaire pour correspondre à notre standard interne
-        if 'Date Livré' in df.columns: 
-            df = df.rename(columns={'Date Livré': 'Livré le'})
+        # S'assurer que toutes les colonnes attendues existent
+        for col in COLUMNS_DATA:
+            if col not in df.columns:
+                df[col] = ""
         
-        # Conversion des colonnes temporelles
-        for col in ['Livré le', 'Date Clôture']:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors='coerce')
-        
-        return df.reindex(columns=cols).fillna('')
+        return df[COLUMNS_DATA]
     except Exception as e:
         st.error(f"Erreur de lecture : {e}")
-        return pd.DataFrame(columns=cols)
+        return pd.DataFrame(columns=COLUMNS_DATA)
 
-def update_multiple_rows(df_changes):
-    """Mise à jour multi-lignes optimisée"""
+def save_data_to_gsheet(df_updated):
+    """Sauvegarde complète de la feuille (plus fiable que update_cell par cell)"""
     try:
         gc = authenticate_gsheet()
         sh = gc.open_by_key(SHEET_ID)
         ws = sh.worksheet(WS_DATA)
-        headers = ws.row_values(1)
         
-        for _, row in df_changes.iterrows():
-            # On cherche par NumReception (clé primaire)
-            cell = ws.find(str(row['NumReception']), in_column=1)
-            if cell:
-                for col_name, val in row.items():
-                    if col_name in headers and col_name != 'NumReception':
-                        c_idx = headers.index(col_name) + 1
-                        # Formatage date pour l'écriture dans Google Sheets
-                        if isinstance(val, pd.Timestamp):
-                            val = val.strftime('%Y-%m-%d')
-                        ws.update_cell(cell.row, c_idx, str(val))
+        # Préparation des données (headers + data)
+        # Conversion des dates/objets en string pour JSON
+        df_to_save = df_updated.copy()
+        for col in df_to_save.columns:
+            df_to_save[col] = df_to_save[col].astype(str).replace(['NaT', 'nan', 'None'], '')
+            
+        data_to_upload = [df_to_save.columns.values.tolist()] + df_to_save.values.tolist()
+        
+        ws.update('A1', data_to_upload)
         return True
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde : {e}")
         return False
 
+
+
 # --- UI : COMPOSANT GRILLE ---
-def render_advanced_grid(df, editable_cols=[]):
-    """Génère une grille Ag-Grid avec filtres flottants et types de données"""
+def render_custom_grid(df, editable_cols=[], status_options=None):
+    """Génère une grille Ag-Grid optimisée"""
     gb = GridOptionsBuilder.from_dataframe(df)
     
-    # Paramètres par défaut
     gb.configure_default_column(
         resizable=True, sortable=True, filterable=True, 
-        editable=False, filter='agTextColumnFilter', floatingFilter=True
+        editable=False, floatingFilter=True
     )
     
-    # Configuration spécifique des dates
-    date_filter_params = {
-        "comparator": """function(filterLocalDateAtMidnight, cellValue) {
-            if (cellValue == null) return -1;
-            var cellDate = new Date(cellValue);
-            if (filterLocalDateAtMidnight.getTime() === cellDate.getTime()) return 0;
-            if (cellDate < filterLocalDateAtMidnight) return -1;
-            if (cellDate > filterLocalDateAtMidnight) return 1;
-        }"""
-    }
-    
-    for col in ['Livré le', 'Date Clôture']:
-        if col in df.columns:
-            gb.configure_column(
-                col, 
-                filter='agDateColumnFilter', 
-                filterParams=date_filter_params,
-                valueFormatter="x.value ? x.value.split('T')[0] : ''"
-            )
-
-    # Colonnes éditables (Mise en évidence)
+    # Configuration des colonnes éditables
     for col in editable_cols:
-        gb.configure_column(
-            col, editable=True, 
-            cellStyle={'background-color': '#e0f2fe', 'border': '1px solid #38bdf8'}
-        )
+        if col == 'StatutBL' and status_options:
+            gb.configure_column(col, editable=True, cellEditor='agSelectCellEditor', 
+                               cellEditorParams={'values': status_options})
+        else:
+            gb.configure_column(col, editable=True)
+            
+        # Style pour les colonnes modifiables
+        gb.configure_column(col, cellStyle={'background-color': '#f0f9ff', 'border': '1px solid #bae6fd'})
 
-    gb.configure_pagination(paginationAutoPageSize=True)
+    # Formatage spécifique pour le montant (Mt TTC)
+    if 'Mt TTC' in df.columns:
+        gb.configure_column('Mt TTC', valueFormatter="x.value + ' €'")
+
+    gb.configure_pagination(paginationPageSize=15)
+    gb.configure_selection(selection_mode="multiple", use_checkbox=True)
     grid_options = gb.build()
     
     return AgGrid(
@@ -117,55 +105,93 @@ def render_advanced_grid(df, editable_cols=[]):
         gridOptions=grid_options,
         update_mode=GridUpdateMode.VALUE_CHANGED,
         data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-        theme='balham',
-        allow_unsafe_jscode=True,
+        theme='material',
+        fit_columns_on_grid_load=False,
         height=500
     )
+
 
 # --- APPLICATION ---
 
 def main():
-    st.set_page_config(page_title="Logistique Intégrale", layout="wide")
+    st.set_page_config(page_title="Logistique Réception", layout="wide", page_icon="📦")
+
+    # CSS Custom pour améliorer le look
+    st.markdown("""
+        <style>
+        .main { background-color: #f8fafc; }
+        .stButton>button { border-radius: 8px; }
+        </style>
+    """, unsafe_allow_html=True)
     
-    if 'page' not in st.session_state: st.session_state.page = '1'
+    if 'page' not in st.session_state: st.session_state.page = 'dashboard'
 
-    # Menu latéral complet
+ # Menu latéral
     with st.sidebar:
-        st.header("📦 Menu Logistique")
-        if st.button("🚚 Refus de marchandise", use_container_width=True): st.session_state.page = '1'
-        if st.button("🚚 Suivi Transport", use_container_width=True): st.session_state.page = '2'
-        if st.button("⚠️ Pas de Commande", use_container_width=True): st.session_state.page = '3'
-        if st.button("📥 Import Excel", use_container_width=True): st.session_state.page = '4'
-        if st.button("📍 Emplacements", use_container_width=True): st.session_state.page = '5'
-        if st.button("⚙️ Déballage", use_container_width=True): st.session_state.page = '6'
-        if st.button("⚙️ Litiges", use_container_width=True): st.session_state.page = '7'
+        st.title("📦 Logistique")
+        st.info(f"Connecté au Sheet : {WS_DATA}")
+        
+        pages = {
+            'dashboard': "📊 Tableau de Bord",
+            'refus': "🚚 Refus de marchandise ⚠️",
+            'transport': "🚚 Suivi Transport",
+            'pdc': "⚠️ Pas de Commande",
+            'import': "📥 Import Excel",
+            'emplacements': "📍 Emplacements",
+            'deballage': "⚙️ Déballage",
+            'litige': "⚙️ Litiges",
+            'hist': "📜 Historique Global"
+        }
+        
+        for key, label in pages.items():
+            if st.button(label, use_container_width=True, type="primary" if st.session_state.page == key else "secondary"):
+                st.session_state.page = key
+        
+        st.divider()
+        if st.button("🔄 Actualiser les données"):
+            st.rerun()
             
-        st.markdown("---")
-        if st.button("📜 Historique Global", use_container_width=True): st.session_state.page = 'hist'
+    # Chargement initial des données
+    df_all = load_data(WS_DATA)
 
+    # --- PAGE ACCUEIL 
+    if st.session_state.page == 'dashboard':
+        st.header("📊 Tableau de Bord Réception")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Réceptions", len(df_all))
+        col2.metric("À déballer", len(df_all[df_all['StatutBL'] == 'À déballer']))
+        col3.metric("Litiges", len(df_all[df_all['StatutBL'] == 'LITIGE']))
+        col4.metric("Terminées", len(df_all[df_all['StatutBL'].isin(['TERMINEE', 'Clôturé'])]))
+        
+        st.subheader("Dernières réceptions")
+        st.dataframe(df_all.head(10), use_container_width=True)
+    
     # --- PAGE 1 : A FAIRE AVEC ENVOI DE MAIL ---
     # --- Lié à la page REFUS  ---
-    if st.session_state.page == '1':
-        st.header("🚚 Saisir un refus de marchandise 🚚")
+    elif st.session_state.page == 'refus':
+        st.header("🚚 Saisir un refus de marchandise ⚠️")
 
     # --- PAGE 2 : SUIVI TRANSPORT ---
     # --- Lié à la page TRANSPORT  ---
-    elif st.session_state.page == '2':
-        st.header("🚚 Suivi des Transports 🚚")
-        df_all = load_data(WS_DATA, COLUMNS_DATA)
-        # On affiche tout ce qui est récent ou en cours
-        df_target = df_all.copy()
-        
-        st.info("Ajoutez ou modifiez les numéros de transport ici.")
-        grid_res = render_advanced_grid(
-            df_target[['NumReception', 'Fournisseur', 'Livré le', 'NumTransport', 'StatutBL']],
+elif st.session_state.page == 'transport':
+        st.header("🚚 Suivi des Numéros de Transport")
+        # On affiche tout, avec focus sur NumTransport
+        grid_res = render_custom_grid(
+            df_all[['NumReception', 'Fournisseur', 'Livré le', 'NumTransport', 'StatutBL']],
             editable_cols=['NumTransport']
         )
         
-        if st.button("💾 Enregistrer les Numéros de Transport"):
-            if update_multiple_rows(grid_res['data']):
-                st.success("Transports mis à jour.")
+        if st.button("💾 Enregistrer les modifications de transport"):
+            # Fusionner les modifs avec le dataframe principal
+            df_updated = df_all.copy()
+            new_data = pd.DataFrame(grid_res['data'])
+            for idx, row in new_data.iterrows():
+                df_updated.loc[df_updated['NumReception'] == row['NumReception'], 'NumTransport'] = row['NumTransport']
+            
+            if save_data_to_gsheet(df_updated):
+                st.success("Transports mis à jour !")
                 st.rerun()
+
 
     # --- PAGE 3 : PAS DE COMMANDE ---
     # --- Lié à la page PDC  ---
@@ -189,106 +215,106 @@ def main():
                     st.rerun()
 
 
-    # --- PAGE 4 : IMPORT EXCEL ---
+    # ---  IMPORT EXCEL ---
     # --- Lié à la page DATA  ---
-    elif st.session_state.page == '4':
+        elif st.session_state.page == 'import':
         st.header("📥 Import des nouvelles réceptions")
-        uploaded_file = st.file_uploader("Choisir le fichier d'extraction Excel", type=['xlsx', 'xls'])
+        st.write("Le fichier Excel doit contenir au minimum : `NumReception`, `Fournisseur`, `Livré le`")
+        uploaded_file = st.file_uploader("Fichier Excel", type=['xlsx', 'xls'])
         
         if uploaded_file:
             df_upload = pd.read_excel(uploaded_file)
-            st.info(f"Fichier chargé : {len(df_upload)} lignes détectées.")
+            st.write(f"Aperçu ({len(df_upload)} lignes) :")
+            st.dataframe(df_upload.head())
             
-            # Contrôle de validité
-            required_cols = ['NumReception', 'Fournisseur', 'Livré le']
-            missing = [c for c in required_cols if c not in df_upload.columns]
-            
-            if missing:
-                st.error(f"Erreur : Les colonnes suivantes sont absentes : {', '.join(missing)}")
-            else:
-                st.write("Aperçu avant envoi :")
-                st.dataframe(df_upload.head())
+            if st.button("🚀 Ajouter au Google Sheet"):
+                # On prépare les données pour matcher exactement les colonnes
+                df_to_append = df_upload.reindex(columns=COLUMNS_DATA).fillna('')
+                # On concatène avec l'existant
+                df_final = pd.concat([df_all, df_to_append], ignore_index=True)
                 
-                if st.button("🚀 Valider et Envoyer vers Google Sheets"):
-                    with st.spinner("Envoi en cours..."):
-                        gc = authenticate_gsheet()
-                        sh = gc.open_by_key(SHEET_ID)
-                        ws = sh.worksheet(WS_DATA)
-                        
-                        df_final = df_upload.reindex(columns=COLUMNS_DATA).fillna('')
-                        # Convertir dates en texte
-                        for c in ['Livré le', 'Date Clôture']:
-                            if c in df_final.columns:
-                                df_final[c] = df_final[c].astype(str).replace(['NaT', 'nan'], '')
-                        
-                        ws.append_rows(df_final.values.tolist())
-                        st.success("✅ Importation terminée !")
+                if save_data_to_gsheet(df_final):
+                    st.success("Import réussi !")
+                    st.rerun()
 
-    # --- PAGE 5 : EMPLACEMENTS ---
+    # --- EMPLACEMENTS ---
     # --- Lié à la page DATA  ---
-    elif st.session_state.page == '5':
+    elif st.session_state.page == 'emplacements':
         st.header("📍 Attribution des Emplacements")
-        df_all = load_data(WS_DATA, COLUMNS_DATA)
-        # On ne traite que ce qui n'est pas clôturé et sans emplacement
-        df_target = df_all[(df_all['StatutBL'] != 'Clôturé') & (df_all['Emplacement'] == '')].copy()
-
+        mask = (df_all['Emplacement'] == "") | (df_all['Emplacement'].isna())
+        df_target = df_all[mask].copy()
+        
         if df_target.empty:
             st.success("Toutes les réceptions ont un emplacement !")
         else:
-            st.info("Saisissez l'emplacement puis cliquez sur Sauvegarder.")
-            grid_res = render_advanced_grid(
+            grid_res = render_custom_grid(
                 df_target[['NumReception', 'Fournisseur', 'Livré le', 'Qté', 'Emplacement']],
                 editable_cols=['Emplacement']
             )
             if st.button("💾 Sauvegarder les Emplacements"):
-                if update_multiple_rows(grid_res['data']):
-                    st.success("Données enregistrées.")
+                df_updated = df_all.copy()
+                new_entries = pd.DataFrame(grid_res['data'])
+                for _, row in new_entries.iterrows():
+                    df_updated.loc[df_updated['NumReception'] == row['NumReception'], 'Emplacement'] = row['Emplacement']
+                
+                if save_data_to_gsheet(df_updated):
+                    st.success("Emplacements enregistrés.")
                     st.rerun()
 
-    # --- PAGE 6 : DÉBALLAGE ---
+    # --- DÉBALLAGE ---
     # --- Lié à la page DATA  ---
-    elif st.session_state.page == '6':
-        st.header("⚙️ Suivi du Déballage")
-        df_all = load_data(WS_DATA, COLUMNS_DATA)
-        # On filtre pour exclure les dossiers clôturés
-        df_target = df_all[df_all['StatutBL'] != 'Clôturé'].copy()
+    elif st.session_state.page == 'deballage':
+        st.header("⚙️ Suivi du Déballage ")
+        # Filtrer pour ne pas montrer ce qui est déjà fini depuis longtemps si nécessaire
+        df_target = df_all[df_all['StatutBL'] != 'TERMINEE'].copy()
         
-        st.warning("Gérez ici les statuts, les noms des déballeurs.")
-        grid_res = render_advanced_grid(
+        grid_res = render_custom_grid(
             df_target[['NumReception', 'Fournisseur', 'StatutBL', 'NomDeballage', 'LitigesCompta', 'Commentaire_litige']],
-            editable_cols=['StatutBL', 'NomDeballage', 'LitigesCompta', 'Commentaire_litige']
+            editable_cols=['StatutBL', 'NomDeballage', 'LitigesCompta', 'Commentaire_litige'],
+            status_options=['À déballer', 'EN COURS', 'TERMINEE', 'LITIGE', 'A_DEBALLER']
         )
         
-        if st.button("💾 Enregistrer les Modifications"):
-            if update_multiple_rows(grid_res['data']):
-                st.success("Mise à jour effectuée.")
+        if st.button("💾 Enregistrer les modifications de déballage"):
+            df_updated = df_all.copy()
+            updated_rows = pd.DataFrame(grid_res['data'])
+            for _, row in updated_rows.iterrows():
+                for col in ['StatutBL', 'NomDeballage', 'LitigesCompta', 'Commentaire_litige']:
+                    df_updated.loc[df_updated['NumReception'] == row['NumReception'], col] = row[col]
+            
+            if save_data_to_gsheet(df_updated):
+                st.success("Mise à jour effectuée !")
                 st.rerun()
                 
     # --- PAGE 7 : LITIGES ---
     # --- Lié à la page LITIGES  ---
-    elif st.session_state.page == '7':
-        st.header("⚙️  Gestion des Litiges")
-        df_all = load_data(WS_DATA, COLUMNS_DATA)
-        # On filtre pour exclure les dossiers clôturés
-        df_target = df_all[df_all['StatutBL'] != 'Clôturé'].copy()
+    elif st.session_state.page == 'litige':
+        st.header("⚙️ Suivi des Litiges")
+        # Filtrer pour ne pas montrer ce qui est déjà fini depuis longtemps si nécessaire
+        df_target = df_all[df_all['StatutBL'] != 'TERMINEE'].copy()
         
-        st.warning("Gérez ici les statutss de litige.")
-        grid_res = render_advanced_grid(
+        grid_res = render_custom_grid(
             df_target[['NumReception', 'Fournisseur', 'StatutBL', 'NomDeballage', 'LitigesCompta', 'Commentaire_litige']],
-            editable_cols=['StatutBL', 'NomDeballage', 'LitigesCompta', 'Commentaire_litige']
+            editable_cols=['StatutBL', 'NomDeballage', 'LitigesCompta', 'Commentaire_litige'],
+            status_options=['À déballer', 'EN COURS', 'TERMINEE', 'LITIGE', 'A_DEBALLER']
         )
         
-        if st.button("💾 Enregistrer les Modifications"):
-            if update_multiple_rows(grid_res['data']):
-                st.success("Mise à jour effectuée.")
+        if st.button("💾 Enregistrer les modifications de déballage"):
+            df_updated = df_all.copy()
+            updated_rows = pd.DataFrame(grid_res['data'])
+            for _, row in updated_rows.iterrows():
+                for col in ['StatutBL', 'NomDeballage', 'LitigesCompta', 'Commentaire_litige']:
+                    df_updated.loc[df_updated['NumReception'] == row['NumReception'], col] = row[col]
+            
+            if save_data_to_gsheet(df_updated):
+                st.success("Mise à jour effectuée !")
                 st.rerun()
     
-    
-    # --- PAGE HISTORIQUE ---
+    # --- PAGE HISTORIQUE---    
+    # --- Lié à la page DATA  ---
     elif st.session_state.page == 'hist':
-        st.header("📜 Historique Complet (Lecture seule)")
-        df_all = load_data(WS_DATA, COLUMNS_DATA)
-        render_advanced_grid(df_all)
+        st.header("📜 Historique Complet")
+        render_custom_grid(df_all)
 
 if __name__ == "__main__":
+    main()
     main()
