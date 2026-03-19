@@ -271,7 +271,7 @@ def main():
         st.header("🚚 Enregistrement d'un Refus de Marchandise")
         
         # Section Formulaire
-                with st.form("form_refus", clear_on_submit=True):
+        with st.form("form_refus", clear_on_submit=True):
             col1, col2 = st.columns(2)
             f_magasin = col1.selectbox("Magasin", ["BAYONNE", "PAU", "BORDEAUX", "AUTRE"])
             f_date = col1.date_input("Date du refus", datetime.now())
