@@ -132,6 +132,7 @@ def render_custom_grid(df, editable_cols=[], status_options=None):
 
 #DEF FEUILLE REFUS
 def add_refus_row(row_list):
+    """Ajoute réellement la ligne dans l'onglet REFUS"""
     try:
         gc = authenticate_gsheet()
         if not gc: return False
@@ -140,39 +141,47 @@ def add_refus_row(row_list):
         ws.append_row(row_list)
         return True
     except Exception as e:
-        st.error(f"❌ Impossible d'ajouter la ligne : {e}")
+        st.error(f"❌ Erreur lors de l'écriture dans Google Sheets : {e}")
         return False
-        
-def send_refus_email(magasin, fournisseur, bl, commentaire):
-    """Prépare et envoie un mail informatif via l'API Gemini"""
-    prompt = f"""
-    Rédige un e-mail professionnel pour informer d'un refus de marchandise.
-    Détails :
-    - Magasin : {magasin}
-    - Fournisseur : {fournisseur}
-    - Numéro de BL : {bl}
-    - Motif/Commentaire : {commentaire}
-    L'e-mail doit être court et clair.
-    """
-    
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "systemInstruction": {"parts": [{"text": "Tu es un assistant logistique expert."}]}
-    }
-    
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
-    
+
+def send_actual_email(to_email, subject, body):
+    """Envoie l'e-mail via le serveur SMTP configuré"""
     try:
-        # Tentative d'envoi (Simulation de génération de contenu mail)
-        response = requests.post(url, json=payload)
-        result = response.json()
-        email_content = result['candidates'][0]['content']['parts'][0]['text']
-        return email_content
+        if "email" not in st.secrets:
+            return False, "Configuration SMTP manquante dans les Secrets."
+            
+        mail_config = st.secrets["email"]
+        
+        msg = MIMEMultipart()
+        msg['From'] = mail_config["sender_email"]
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+
+        # Connexion au serveur
+        server = smtplib.SMTP(mail_config["smtp_server"], mail_config["smtp_port"])
+        server.starttls() # Sécurisation de la connexion
+        server.login(mail_config["sender_email"], mail_config["sender_password"])
+        server.send_message(msg)
+        server.quit()
+        return True, "Succès"
     except Exception as e:
-        return f"Erreur lors de la génération du mail : {e}"
+        return False, str(e)
+
+def generate_mail_content(magasin, fournisseur, bl, commentaire):
+    """Utilise Gemini pour rédiger un mail propre"""
+    prompt = f"Rédige un e-mail professionnel très court pour un refus de marchandise. Magasin: {magasin}, Fournisseur: {fournisseur}, BL: {bl}, Motif: {commentaire}. Signé: L'équipe Réception."
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        return response.json()['candidates'][0]['content']['parts'][0]['text']
+    except:
+        return f"Madame, Monsieur,\n\nNous vous informons du refus de la livraison du fournisseur {fournisseur} ce jour au magasin de {magasin} (BL n°{bl}).\n\nMotif : {commentaire}\n\nCordialement,\nL'équipe Réception."
+
         
 
-# --- APPLICATION ---
+# --- APPLICATION ------------------------------------------------------------------------------------------------------------------------------
 
 def main():
     st.set_page_config(page_title="Logistique Réception", layout="wide", page_icon="📦")
