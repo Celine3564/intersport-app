@@ -217,7 +217,7 @@ def main():
     # --- PAGE REFUS DE MARCHANDISE---
     # --- Lié à la page REFUS  ---
     elif st.session_state.page == 'refus':
-st.header("🚚 Gestion des Refus de Marchandise")
+        st.header("🚚 Gestion des Refus de Marchandise")
         
         # Section 1 : Formulaire d'ajout
         with st.expander("➕ Enregistrer un nouveau refus", expanded=True):
