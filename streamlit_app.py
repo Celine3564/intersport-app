@@ -175,6 +175,7 @@ def send_actual_email(to_email, subject, body):
     except Exception as e:
         return False, str(e)
 
+
 def generate_mail_content(magasin, fournisseur, bl, commentaire):
     """Utilise Gemini pour rédiger un mail propre"""
     prompt = f"Rédige un e-mail professionnel très court pour un refus de marchandise. Magasin: {magasin}, Fournisseur: {fournisseur}, BL: {bl}, Motif: {commentaire}. Signé: L'équipe Réception."
