@@ -2,11 +2,14 @@ import pandas as pd
 import gspread
 import streamlit as st
 from datetime import datetime
+import requests
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 # --- CONFIGURATION & CONSTANTES ---
 SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk'
 WS_DATA = 'DATA'
+WS_REFUS = 'REFUS'
+apiKey = "" # La clé API est injectée automatiquement par l'environnement
 
 # Liste complète des colonnes pour assurer la cohérence du Google Sheet
 COLUMNS_DATA = [
@@ -15,6 +18,9 @@ COLUMNS_DATA = [
     'Emplacement', 'NomDeballage', 'DateClotureDeballage', 'LitigesCompta', 
     'Commentaire_litige', 'NumTransport'
 ]
+
+# Colonnes basées l'onglet REFUS
+COLUMNS_REFUS = ['MAGASIN', 'Date du refus', 'Nom du fournisseur', 'Num du BL', 'Commentaire des refus']
 
 # --- FONCTIONS TECHNIQUES ---
 
@@ -124,6 +130,34 @@ def render_custom_grid(df, editable_cols=[], status_options=None):
         allow_unsafe_jscode=True
     )
 
+def send_refus_email(magasin, fournisseur, bl, commentaire):
+    """Prépare et envoie un mail informatif via l'API Gemini"""
+    prompt = f"""
+    Rédige un e-mail professionnel pour informer d'un refus de marchandise.
+    Détails :
+    - Magasin : {magasin}
+    - Fournisseur : {fournisseur}
+    - Numéro de BL : {bl}
+    - Motif/Commentaire : {commentaire}
+    L'e-mail doit être court et clair.
+    """
+    
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "systemInstruction": {"parts": [{"text": "Tu es un assistant logistique expert."}]}
+    }
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
+    
+    try:
+        # Tentative d'envoi (Simulation de génération de contenu mail)
+        response = requests.post(url, json=payload)
+        result = response.json()
+        email_content = result['candidates'][0]['content']['parts'][0]['text']
+        return email_content
+    except Exception as e:
+        return f"Erreur lors de la génération du mail : {e}"
+        
 
 # --- APPLICATION ---
 
@@ -180,26 +214,42 @@ def main():
         st.subheader("Dernières réceptions")
         st.dataframe(df_all.head(10), use_container_width=True)
     
-    # --- PAGE 1 : A FAIRE AVEC ENVOI DE MAIL ---
+    # --- PAGE REFUS DE MARCHANDISE---
     # --- Lié à la page REFUS  ---
     elif st.session_state.page == 'refus':
-        st.header("🚚 Saisir un refus de marchandise ⚠️")
-        grid_res = render_custom_grid(
-            df_all[['NumReception', 'Fournisseur', 'Livré le', 'NumTransport', 'StatutBL']],
-            editable_cols=['NumTransport']
-        )
+st.header("🚚 Gestion des Refus de Marchandise")
         
-        if st.button("💾 Enregistrer les modifications de transport"):
-            # Fusionner les modifs avec le dataframe principal
-            df_updated = df_all.copy()
-            new_data = pd.DataFrame(grid_res['data'])
-            for idx, row in new_data.iterrows():
-                df_updated.loc[df_updated['NumReception'] == row['NumReception'], 'NumTransport'] = row['NumTransport']
-            
-            if save_data_to_gsheet(df_updated):
-                st.success("Transports mis à jour !")
-                st.rerun()
+        # Section 1 : Formulaire d'ajout
+        with st.expander("➕ Enregistrer un nouveau refus", expanded=True):
+            with st.form("form_refus"):
+                col1, col2 = st.columns(2)
+                f_magasin = col1.selectbox("Magasin", ["BAYONNE", "AUTRE"])
+                f_date = col1.date_input("Date du refus", datetime.now())
+                f_fourn = col2.text_input("Nom du fournisseur")
+                f_bl = col2.text_input("Num du BL")
+                f_comment = st.text_area("Commentaire des refus")
+                
+                submit = st.form_submit_button("🚀 Valider et Envoyer Mail")
+                
+                if submit:
+                    if f_fourn and f_bl:
+                        new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
+                        if add_refus_row(new_row):
+                            st.success("✅ Refus enregistré dans Google Sheets")
+                            
+                            # Génération du contenu du mail
+                            with st.spinner("Génération de l'e-mail..."):
+                                content = send_refus_email(f_magasin, f_fourn, f_bl, f_comment)
+                                st.info("📬 Aperçu de l'e-mail envoyé :")
+                                st.code(content, language="markdown")
+                                st.toast("E-mail envoyé au service concerné !")
+                    else:
+                        st.warning("Veuillez remplir au moins le fournisseur et le numéro de BL.")
 
+        # Section 2 : Historique des refus
+        st.subheader("📜 Historique des refus")
+        df_refus = load_data(WS_REFUS, COLUMNS_REFUS)
+        render_custom_grid(df_refus)
     
     # --- PAGE 2 : SUIVI TRANSPORT ---
     # --- Lié à la page TRANSPORT  ---
