@@ -133,16 +133,59 @@ def main():
     # Menu latéral complet
     with st.sidebar:
         st.header("📦 Menu Logistique")
-        if st.button("📥 1. Import Excel", use_container_width=True): st.session_state.page = '1'
-        if st.button("📍 2. Emplacements", use_container_width=True): st.session_state.page = '2'
-        if st.button("⚙️ 3. Déballage & Litiges", use_container_width=True): st.session_state.page = '3'
-        if st.button("🚚 4. Suivi Transport", use_container_width=True): st.session_state.page = '4'
-        if st.button("⚠️ 5. Pas de Commande", use_container_width=True): st.session_state.page = '5'
+        if st.button("🚚 Refus de marchandise", use_container_width=True): st.session_state.page = '1'
+        if st.button("🚚 Suivi Transport", use_container_width=True): st.session_state.page = '2'
+        if st.button("⚠️ Pas de Commande", use_container_width=True): st.session_state.page = '3'
+        if st.button("📥 Import Excel", use_container_width=True): st.session_state.page = '4'
+        if st.button("📍 Emplacements", use_container_width=True): st.session_state.page = '5'
+        if st.button("⚙️ Déballage", use_container_width=True): st.session_state.page = '6'
+        if st.button("⚙️ Litiges", use_container_width=True): st.session_state.page = '7'
+            
         st.markdown("---")
         if st.button("📜 Historique Global", use_container_width=True): st.session_state.page = 'hist'
 
-    # --- PAGE 1 : IMPORT EXCEL ---
-    if st.session_state.page == '1':
+
+    # --- PAGE 2 : SUIVI TRANSPORT ---
+    elif st.session_state.page == '2':
+        st.header("🚚 Suivi des Transports")
+        df_all = load_data(WS_DATA, COLUMNS_DATA)
+        # On affiche tout ce qui est récent ou en cours
+        df_target = df_all.copy()
+        
+        st.info("Ajoutez ou modifiez les numéros de transport ici.")
+        grid_res = render_advanced_grid(
+            df_target[['NumReception', 'Fournisseur', 'Livré le', 'NumTransport', 'StatutBL']],
+            editable_cols=['NumTransport']
+        )
+        
+        if st.button("💾 Enregistrer les Numéros de Transport"):
+            if update_multiple_rows(grid_res['data']):
+                st.success("Transports mis à jour.")
+                st.rerun()
+
+# --- PAGE 3 : PAS DE COMMANDE ---
+    elif st.session_state.page == '3':
+        st.header("⚠️ Gestion des 'Pas de Commande'")
+        df_all = load_data(WS_DATA, COLUMNS_DATA)
+        # On filtre par exemple sur un statut spécifique ou l'absence de numéro de commande
+        # Ici on affiche tout ce qui est marqué en litige ou spécifique "Sans commande"
+        df_target = df_all[df_all['StatutBL'].str.contains('Commande', case=False, na=False) | (df_all['StatutBL'] == 'LITIGE')].copy()
+        
+        if df_target.empty:
+            st.info("Aucun dossier 'Pas de Commande' identifié.")
+        else:
+            grid_res = render_advanced_grid(
+                df_target[['NumReception', 'Fournisseur', 'StatutBL', 'Commentaire_litige', 'Date Clôture']],
+                editable_cols=['StatutBL', 'Commentaire_litige', 'Date Clôture']
+            )
+            if st.button("💾 Actualiser les dossiers"):
+                if update_multiple_rows(grid_res['data']):
+                    st.success("Dossiers mis à jour.")
+                    st.rerun()
+
+
+    # --- PAGE 4 : IMPORT EXCEL ---
+    if st.session_state.page == '4':
         st.header("📥 Import des nouvelles réceptions")
         uploaded_file = st.file_uploader("Choisir le fichier d'extraction Excel", type=['xlsx', 'xls'])
         
@@ -175,8 +218,8 @@ def main():
                         ws.append_rows(df_final.values.tolist())
                         st.success("✅ Importation terminée !")
 
-    # --- PAGE 2 : EMPLACEMENTS ---
-    elif st.session_state.page == '2':
+    # --- PAGE 5 : EMPLACEMENTS ---
+    elif st.session_state.page == '5':
         st.header("📍 Attribution des Emplacements")
         df_all = load_data(WS_DATA, COLUMNS_DATA)
         # On ne traite que ce qui n'est pas clôturé et sans emplacement
@@ -213,44 +256,8 @@ def main():
                 st.success("Mise à jour effectuée.")
                 st.rerun()
 
-    # --- PAGE 4 : SUIVI TRANSPORT ---
-    elif st.session_state.page == '4':
-        st.header("🚚 Suivi des Transports")
-        df_all = load_data(WS_DATA, COLUMNS_DATA)
-        # On affiche tout ce qui est récent ou en cours
-        df_target = df_all.copy()
-        
-        st.info("Ajoutez ou modifiez les numéros de transport ici.")
-        grid_res = render_advanced_grid(
-            df_target[['NumReception', 'Fournisseur', 'Livré le', 'NumTransport', 'StatutBL']],
-            editable_cols=['NumTransport']
-        )
-        
-        if st.button("💾 Enregistrer les Numéros de Transport"):
-            if update_multiple_rows(grid_res['data']):
-                st.success("Transports mis à jour.")
-                st.rerun()
-
-    # --- PAGE 5 : PAS DE COMMANDE ---
-    elif st.session_state.page == '5':
-        st.header("⚠️ Gestion des 'Pas de Commande'")
-        df_all = load_data(WS_DATA, COLUMNS_DATA)
-        # On filtre par exemple sur un statut spécifique ou l'absence de numéro de commande
-        # Ici on affiche tout ce qui est marqué en litige ou spécifique "Sans commande"
-        df_target = df_all[df_all['StatutBL'].str.contains('Commande', case=False, na=False) | (df_all['StatutBL'] == 'LITIGE')].copy()
-        
-        if df_target.empty:
-            st.info("Aucun dossier 'Pas de Commande' identifié.")
-        else:
-            grid_res = render_advanced_grid(
-                df_target[['NumReception', 'Fournisseur', 'StatutBL', 'Commentaire_litige', 'Date Clôture']],
-                editable_cols=['StatutBL', 'Commentaire_litige', 'Date Clôture']
-            )
-            if st.button("💾 Actualiser les dossiers"):
-                if update_multiple_rows(grid_res['data']):
-                    st.success("Dossiers mis à jour.")
-                    st.rerun()
-
+    
+    
     # --- PAGE HISTORIQUE ---
     elif st.session_state.page == 'hist':
         st.header("📜 Historique Complet (Lecture seule)")
