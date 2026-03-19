@@ -229,7 +229,7 @@ def main():
             st.rerun()
             
     # Chargement initial des données
-    df_all = load_data(WS_DATA)
+    df_all = load_data(WS_DATA,COLUMNS_DATA)
 
     # --- PAGE ACCUEIL 
     if st.session_state.page == 'dashboard':
