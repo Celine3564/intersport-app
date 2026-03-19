@@ -3,7 +3,10 @@ import gspread
 import streamlit as st
 from datetime import datetime
 import requests
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from st_aggrid import AgGrid, GridOptionsBuilder
 
 # --- CONFIGURATION & CONSTANTES ---
 SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk'
