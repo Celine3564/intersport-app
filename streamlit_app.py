@@ -21,6 +21,7 @@ COLUMNS_DATA = [
 
 # Colonnes basées l'onglet REFUS
 COLUMNS_REFUS = ['MAGASIN', 'Date du refus', 'Nom du fournisseur', 'Num du BL','Commentaire du refus']
+				
 
 # --- FONCTIONS TECHNIQUES ---
 
@@ -34,25 +35,31 @@ def authenticate_gsheet():
         st.error(f"Erreur d'authentification : {e}")
         return None
 
-def load_data(ws_name):
-    """Chargement des données avec formatage"""
+def load_data(ws_name, cols):
+    """Charge les données d'un onglet spécifique"""
     try:
         gc = authenticate_gsheet()
-        if not gc: return pd.DataFrame(columns=COLUMNS_DATA)
+        if not gc: return pd.DataFrame(columns=cols)
         sh = gc.open_by_key(SHEET_ID)
+        
+        # Vérification si l'onglet existe
+        titles = [w.title for w in sh.worksheets()]
+        if ws_name not in titles:
+            st.error(f"❌ L'onglet '{ws_name}' est introuvable.")
+            return pd.DataFrame(columns=cols)
+            
         ws = sh.worksheet(ws_name)
         data = ws.get_all_records()
         df = pd.DataFrame(data)
         
-        # S'assurer que toutes les colonnes attendues existent
-        for col in COLUMNS_DATA:
-            if col not in df.columns:
-                df[col] = ""
-        
-        return df[COLUMNS_DATA]
+        if df.empty:
+            return pd.DataFrame(columns=cols)
+            
+        # On s'assure de ne prendre que les colonnes définies
+        return df.reindex(columns=cols).fillna('')
     except Exception as e:
-        st.error(f"Erreur de lecture : {e}")
-        return pd.DataFrame(columns=COLUMNS_DATA)
+        st.error(f"❌ Erreur de lecture {ws_name} : {e}")
+        return pd.DataFrame(columns=cols)
 
 def save_data_to_gsheet(df_updated):
     """Sauvegarde complète de la feuille (plus fiable que update_cell par cell)"""
