@@ -72,7 +72,6 @@ def update_multiple_rows(df_changes):
         return False
 
 # --- UI : COMPOSANT GRILLE ---
-
 def render_advanced_grid(df, editable_cols=[]):
     """Génère une grille Ag-Grid avec filtres flottants et types de données"""
     gb = GridOptionsBuilder.from_dataframe(df)
@@ -150,6 +149,7 @@ def main():
         st.header("🚚 Saisir un refus de marchandise 🚚")
 
     # --- PAGE 2 : SUIVI TRANSPORT ---
+    # --- Lié à la page TRANSPORT  ---
     elif st.session_state.page == '2':
         st.header("🚚 Suivi des Transports 🚚")
         df_all = load_data(WS_DATA, COLUMNS_DATA)
@@ -167,7 +167,8 @@ def main():
                 st.success("Transports mis à jour.")
                 st.rerun()
 
-# --- PAGE 3 : PAS DE COMMANDE ---
+    # --- PAGE 3 : PAS DE COMMANDE ---
+    # --- Lié à la page PDC  ---
     elif st.session_state.page == '3':
         st.header("⚠️ Gestion des 'Pas de Commande'")
         df_all = load_data(WS_DATA, COLUMNS_DATA)
@@ -189,6 +190,7 @@ def main():
 
 
     # --- PAGE 4 : IMPORT EXCEL ---
+    # --- Lié à la page DATA  ---
     elif st.session_state.page == '4':
         st.header("📥 Import des nouvelles réceptions")
         uploaded_file = st.file_uploader("Choisir le fichier d'extraction Excel", type=['xlsx', 'xls'])
@@ -223,6 +225,7 @@ def main():
                         st.success("✅ Importation terminée !")
 
     # --- PAGE 5 : EMPLACEMENTS ---
+    # --- Lié à la page DATA  ---
     elif st.session_state.page == '5':
         st.header("📍 Attribution des Emplacements")
         df_all = load_data(WS_DATA, COLUMNS_DATA)
@@ -242,14 +245,15 @@ def main():
                     st.success("Données enregistrées.")
                     st.rerun()
 
-    # --- PAGE 6et7 : DÉBALLAGE & LITIGES ---
+    # --- PAGE 6 : DÉBALLAGE ---
+    # --- Lié à la page DATA  ---
     elif st.session_state.page == '6':
-        st.header("⚙️ Suivi du Déballage & Gestion des Litiges")
+        st.header("⚙️ Suivi du Déballage")
         df_all = load_data(WS_DATA, COLUMNS_DATA)
         # On filtre pour exclure les dossiers clôturés
         df_target = df_all[df_all['StatutBL'] != 'Clôturé'].copy()
         
-        st.warning("Gérez ici les statuts, les noms des déballeurs et les commentaires de litige.")
+        st.warning("Gérez ici les statuts, les noms des déballeurs.")
         grid_res = render_advanced_grid(
             df_target[['NumReception', 'Fournisseur', 'StatutBL', 'NomDeballage', 'LitigesCompta', 'Commentaire_litige']],
             editable_cols=['StatutBL', 'NomDeballage', 'LitigesCompta', 'Commentaire_litige']
@@ -259,7 +263,25 @@ def main():
             if update_multiple_rows(grid_res['data']):
                 st.success("Mise à jour effectuée.")
                 st.rerun()
-
+                
+    # --- PAGE 7 : LITIGES ---
+    # --- Lié à la page LITIGES  ---
+    elif st.session_state.page == '7':
+        st.header("⚙️  Gestion des Litiges")
+        df_all = load_data(WS_DATA, COLUMNS_DATA)
+        # On filtre pour exclure les dossiers clôturés
+        df_target = df_all[df_all['StatutBL'] != 'Clôturé'].copy()
+        
+        st.warning("Gérez ici les statutss de litige.")
+        grid_res = render_advanced_grid(
+            df_target[['NumReception', 'Fournisseur', 'StatutBL', 'NomDeballage', 'LitigesCompta', 'Commentaire_litige']],
+            editable_cols=['StatutBL', 'NomDeballage', 'LitigesCompta', 'Commentaire_litige']
+        )
+        
+        if st.button("💾 Enregistrer les Modifications"):
+            if update_multiple_rows(grid_res['data']):
+                st.success("Mise à jour effectuée.")
+                st.rerun()
     
     
     # --- PAGE HISTORIQUE ---
