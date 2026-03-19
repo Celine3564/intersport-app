@@ -73,12 +73,21 @@ def save_data_to_gsheet(df_updated):
 
 # --- UI : COMPOSANT GRILLE ---
 def render_custom_grid(df, editable_cols=[], status_options=None):
-    """Génère une grille Ag-Grid optimisée"""
+    """Génère une grille Ag-Grid épurée avec recherche intelligente"""
+    
+    # Ajout d'une barre de recherche globale au-dessus de la grille
+    search_term = st.text_input("🔍 Recherche rapide (Fournisseur, Numéro, etc.)", placeholder="Tapez pour filtrer...")
+
     gb = GridOptionsBuilder.from_dataframe(df)
     
+    # Configuration par défaut épurée
     gb.configure_default_column(
-        resizable=True, sortable=True, filterable=True, 
-        editable=False, floatingFilter=True
+        resizable=True, 
+        sortable=True, 
+        filterable=True, 
+        editable=False,
+        # On désactive le floatingFilter pour alléger visuellement
+        floatingFilter=False 
     )
     
     # Configuration des colonnes éditables
@@ -89,25 +98,30 @@ def render_custom_grid(df, editable_cols=[], status_options=None):
         else:
             gb.configure_column(col, editable=True)
             
-        # Style pour les colonnes modifiables
-        gb.configure_column(col, cellStyle={'background-color': '#f0f9ff', 'border': '1px solid #bae6fd'})
+        # Style subtil pour les colonnes modifiables
+        gb.configure_column(col, cellStyle={'background-color': '#f8fafc', 'border-left': '3px solid #3b82f6'})
 
-    # Formatage spécifique pour le montant (Mt TTC)
+    # Formatage spécifique
     if 'Mt TTC' in df.columns:
         gb.configure_column('Mt TTC', valueFormatter="x.value + ' €'")
 
     gb.configure_pagination(paginationPageSize=15)
     gb.configure_selection(selection_mode="multiple", use_checkbox=True)
+    
+    # Intégration de la recherche globale dans les options
     grid_options = gb.build()
+    if search_term:
+        grid_options['quickFilterText'] = search_term
     
     return AgGrid(
         df,
         gridOptions=grid_options,
         update_mode=GridUpdateMode.VALUE_CHANGED,
         data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-        theme='material',
-        fit_columns_on_grid_load=False,
-        height=500
+        theme='balham', # Thème plus compact et professionnel
+        fit_columns_on_grid_load=True,
+        height=500,
+        allow_unsafe_jscode=True
     )
 
 
@@ -262,6 +276,7 @@ def main():
         
         if df_target.empty:
             st.success("Toutes les réceptions ont un emplacement !")
+            if st.button("Voir tout"): render_custom_grid(df_all)
         else:
             grid_res = render_custom_grid(
                 df_target[['NumReception', 'Fournisseur', 'Livré le', 'Qté', 'Emplacement']],
