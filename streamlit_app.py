@@ -145,25 +145,13 @@ def main():
         if st.button("📜 Historique Global", use_container_width=True): st.session_state.page = 'hist'
 
     # --- PAGE 1 : A FAIRE AVEC ENVOI DE MAIL ---
+    # --- Lié à la page REFUS  ---
     if st.session_state.page == '1':
-        st.header("🚚 Suivi des Transports")
-        df_all = load_data(WS_DATA, COLUMNS_DATA)
-        # On affiche tout ce qui est récent ou en cours
-        df_target = df_all.copy()
-        
-        st.info("Ajoutez ou modifiez les numéros de transport ici.")
-        grid_res = render_advanced_grid(
-            df_target[['NumReception', 'Fournisseur', 'Livré le', 'NumTransport', 'StatutBL']],
-            editable_cols=['NumTransport']
-        )
-        
-        if st.button("💾 Enregistrer les Numéros de Transport"):
-            if update_multiple_rows(grid_res['data']):
-                st.success("Transports mis à jour.")
-                st.rerun()
+        st.header("🚚 Saisir un refus de marchandise 🚚")
+
     # --- PAGE 2 : SUIVI TRANSPORT ---
     elif st.session_state.page == '2':
-        st.header("🚚 Suivi des Transports")
+        st.header("🚚 Suivi des Transports 🚚")
         df_all = load_data(WS_DATA, COLUMNS_DATA)
         # On affiche tout ce qui est récent ou en cours
         df_target = df_all.copy()
