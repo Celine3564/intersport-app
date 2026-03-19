@@ -274,30 +274,29 @@ def main():
             f_date = col1.date_input("Date du refus", datetime.now())
             f_fourn = col2.text_input("Nom du fournisseur")
             f_bl = col2.text_input("Num du BL")
-        
+			
 	        st.divider()
 	        f_email_dest = st.text_input("📧 Envoyer l'alerte e-mail à :", placeholder="exemple@reseau-intersport.fr")
 	        f_comment = st.text_area("Motif détaillé du refus")
-        
-            
+		
             submit = st.form_submit_button("🚀 Enregistrer et Envoyer le mail")
 			            
 			if submit:
-			            if f_fourn and f_bl and f_email_dest:
-			                new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
-			                
-			                with st.spinner("Traitement en cours..."):
-			                    if add_refus_row(new_row):
-			                        body = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
-			                        success, msg = send_actual_email(f_email_dest, f"ALERTE REFUS : {f_fourn}", body)
-			                        
-			                        if success:
-			                            st.balloons()
-			                            st.success(f"✅ Refus enregistré et e-mail envoyé à {f_email_dest}")
-			                        else:
-			                            st.warning(f"✅ Enregistré dans GSheet, mais l'e-mail a échoué : {msg}")
-			            else:
-			                st.error("⚠️ Veuillez remplir le Fournisseur, le BL et l'Email.")
+				if f_fourn and f_bl and f_email_dest:
+					new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
+					
+					with st.spinner("Traitement en cours..."):
+						if add_refus_row(new_row):
+							body = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
+							success, msg = send_actual_email(f_email_dest, f"ALERTE REFUS : {f_fourn}", body)
+							
+							if success:
+								st.balloons()
+								st.success(f"✅ Refus enregistré et e-mail envoyé à {f_email_dest}")
+							else:
+								st.warning(f"✅ Enregistré dans GSheet, mais l'e-mail a échoué : {msg}")
+				else:
+					st.error("⚠️ Veuillez remplir le Fournisseur, le BL et l'Email.")
 
 	
     
