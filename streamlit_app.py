@@ -20,7 +20,7 @@ COLUMNS_DATA = [
 ]
 
 # Colonnes basées l'onglet REFUS
-COLUMNS_REFUS = ['MAGASIN', 'Date du refus', 'Nom du fournisseur', 'Num du BL', 'Commentaire des refus']
+COLUMNS_REFUS = ['MAGASIN', 'Date du refus', 'Nom du fournisseur', 'Num du BL','Type de marchandise', 'Acheteur ','Commentaire des refus']
 
 # --- FONCTIONS TECHNIQUES ---
 
@@ -130,6 +130,19 @@ def render_custom_grid(df, editable_cols=[], status_options=None):
         allow_unsafe_jscode=True
     )
 
+#DEF FEUILLE REFUS
+def add_refus_row(row_list):
+    try:
+        gc = authenticate_gsheet()
+        if not gc: return False
+        sh = gc.open_by_key(SHEET_ID)
+        ws = sh.worksheet(WS_REFUS)
+        ws.append_row(row_list)
+        return True
+    except Exception as e:
+        st.error(f"❌ Impossible d'ajouter la ligne : {e}")
+        return False
+        
 def send_refus_email(magasin, fournisseur, bl, commentaire):
     """Prépare et envoie un mail informatif via l'API Gemini"""
     prompt = f"""
