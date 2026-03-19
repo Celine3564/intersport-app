@@ -211,7 +211,7 @@ def main():
 
     # --- PAGE 3 : PAS DE COMMANDE ---
     # --- Lié à la page PDC  ---
-    elif st.session_state.page == '3':
+    elif st.session_state.page == 'pdc':
         st.header("⚠️ Gestion des 'Pas de Commande'")
         df_all = load_data(WS_DATA, COLUMNS_DATA)
         # On filtre par exemple sur un statut spécifique ou l'absence de numéro de commande
@@ -233,7 +233,7 @@ def main():
 
     # ---  IMPORT EXCEL ---
     # --- Lié à la page DATA  ---
-        elif st.session_state.page == 'import':
+    elif st.session_state.page == 'import':
         st.header("📥 Import des nouvelles réceptions")
         st.write("Le fichier Excel doit contenir au minimum : `NumReception`, `Fournisseur`, `Livré le`")
         uploaded_file = st.file_uploader("Fichier Excel", type=['xlsx', 'xls'])
