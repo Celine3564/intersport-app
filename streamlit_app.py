@@ -256,7 +256,7 @@ def main():
                 f_date = col1.date_input("Date du refus", datetime.now())
                 f_fourn = col2.text_input("Nom du fournisseur")
                 f_bl = col2.text_input("Num du BL")
-                f_comment = st.text_area("Commentaire des refus")
+                f_comment = st.text_area("Commentaire du refus")
                 
                 submit = st.form_submit_button("🚀 Valider et Envoyer Mail")
                 
