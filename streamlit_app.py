@@ -155,7 +155,7 @@ def add_refus_row(row_list):
         return False
 
 def send_actual_email(to_email, subject, body):
-    """Envoie l'e-mail via SMTP avec support des accents (UTF-8)"""
+    """Envoie l'e-mail via SMTP avec support complet des accents et caractères spéciaux"""
     try:
         if "email" not in st.secrets:
             return False, "Configuration SMTP manquante dans les Secrets."
@@ -165,8 +165,10 @@ def send_actual_email(to_email, subject, body):
         msg = MIMEMultipart()
         msg['From'] = mail_config["sender_email"]
         msg['To'] = to_email
-        msg['Subject'] = subject
-        # Utilisation de utf-8 pour éviter l'erreur 'ascii' codec
+        # Encodage du sujet pour éviter l'erreur ascii sur les caractères comme \xa0
+        msg['Subject'] = Header(subject, 'utf-8').encode()
+        
+        # Encodage du corps du mail en utf-8
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
         server = smtplib.SMTP(mail_config["smtp_server"], mail_config["smtp_port"])
