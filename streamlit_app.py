@@ -280,56 +280,56 @@ def main():
     elif st.session_state.page == 'refus':
         st.header("🚚 Refus de Marchandise")
         
-	    # Formulaire d'entrée
-    with st.form("form_refus", clear_on_submit=True):
-        st.subheader("📝 Nouveau Refus")
-        col1, col2 = st.columns(2)
-        
-        f_magasin = col1.selectbox("Magasin", ["BAYONNE", "BIDART", "URRUGNE", "PMI"])
-        f_date = col1.date_input("Date du refus", datetime.now())
-        f_fourn = col2.text_input("Nom du fournisseur")
-        f_bl = col2.text_input("Num du BL")
-        
-        st.divider()
-        f_email_dest = st.text_input("📧 Envoyer l'alerte e-mail à :", placeholder="exemple@reseau-intersport.fr")
-        f_comment = st.text_area("Motif détaillé du refus")
-        
-        # Champ pour la pièce jointe
-        f_file = st.file_uploader("📎 Joindre une photo ou un document (facultatif)", type=["png", "jpg", "jpeg", "pdf"])
-        
-        submit = st.form_submit_button("🚀 Enregistrer et Envoyer le mail")
-        
-        if submit:
-            if f_fourn and f_bl and f_email_dest:
-                new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
-                
-                with st.spinner("Traitement en cours..."):
-                    if add_refus_row(new_row):
-                        body = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
-                        # Envoi avec la pièce jointe si elle existe
-                        success, msg = send_actual_email(f_email_dest, f"ALERTE REFUS : {f_fourn}", body, f_file)
-                        
-                        if success:
-                            st.balloons()
-                            st.success(f"✅ Refus enregistré et e-mail envoyé à {f_email_dest}")
-                        else:
-                            st.warning(f"✅ Enregistré dans GSheet, mais l'e-mail a échoué : {msg}")
-            else:
-                st.error("⚠️ Veuillez remplir le Fournisseur, le BL et l'Email.")
-
-    # Affichage de l'historique
-    st.divider()
-    st.subheader("📜 Historique des derniers refus")
-    df_refus = load_data(WS_REFUS, COLUMNS_REFUS)
-    
-    if not df_refus.empty:
-        gb = GridOptionsBuilder.from_dataframe(df_refus)
-        gb.configure_default_column(resizable=True, sortable=True, filterable=True)
-        gb.configure_pagination(paginationPageSize=10)
-        grid_options = gb.build()
-        AgGrid(df_refus, gridOptions=grid_options, theme='alpine', height=400)
-    else:
-        st.info("Aucun historique disponible.")
+		    # Formulaire d'entrée
+	    with st.form("form_refus", clear_on_submit=True):
+	        st.subheader("📝 Nouveau Refus")
+	        col1, col2 = st.columns(2)
+	        
+	        f_magasin = col1.selectbox("Magasin", ["BAYONNE", "BIDART", "URRUGNE", "PMI"])
+	        f_date = col1.date_input("Date du refus", datetime.now())
+	        f_fourn = col2.text_input("Nom du fournisseur")
+	        f_bl = col2.text_input("Num du BL")
+	        
+	        st.divider()
+	        f_email_dest = st.text_input("📧 Envoyer l'alerte e-mail à :", placeholder="exemple@reseau-intersport.fr")
+	        f_comment = st.text_area("Motif détaillé du refus")
+	        
+	        # Champ pour la pièce jointe
+	        f_file = st.file_uploader("📎 Joindre une photo ou un document (facultatif)", type=["png", "jpg", "jpeg", "pdf"])
+	        
+	        submit = st.form_submit_button("🚀 Enregistrer et Envoyer le mail")
+	        
+	        if submit:
+	            if f_fourn and f_bl and f_email_dest:
+	                new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
+	                
+	                with st.spinner("Traitement en cours..."):
+	                    if add_refus_row(new_row):
+	                        body = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
+	                        # Envoi avec la pièce jointe si elle existe
+	                        success, msg = send_actual_email(f_email_dest, f"ALERTE REFUS : {f_fourn}", body, f_file)
+	                        
+	                        if success:
+	                            st.balloons()
+	                            st.success(f"✅ Refus enregistré et e-mail envoyé à {f_email_dest}")
+	                        else:
+	                            st.warning(f"✅ Enregistré dans GSheet, mais l'e-mail a échoué : {msg}")
+	            else:
+	                st.error("⚠️ Veuillez remplir le Fournisseur, le BL et l'Email.")
+	
+	    # Affichage de l'historique
+	    st.divider()
+	    st.subheader("📜 Historique des derniers refus")
+	    df_refus = load_data(WS_REFUS, COLUMNS_REFUS)
+	    
+	    if not df_refus.empty:
+	        gb = GridOptionsBuilder.from_dataframe(df_refus)
+	        gb.configure_default_column(resizable=True, sortable=True, filterable=True)
+	        gb.configure_pagination(paginationPageSize=10)
+	        grid_options = gb.build()
+	        AgGrid(df_refus, gridOptions=grid_options, theme='alpine', height=400)
+	    else:
+	        st.info("Aucun historique disponible.")
 
     # --- PAGE 2 : SUIVI TRANSPORT ---
     # --- Lié à la page TRANSPORT  ---
