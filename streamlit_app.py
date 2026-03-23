@@ -304,21 +304,20 @@ def main():
             submit = st.form_submit_button("🚀 Enregistrer et Envoyer le mail")
             
             if submit:
-                if f_fourn and f_bl and f_email_dest:
+                if f_fourn and f_bl and f_emails_choisis:
                     new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
-                    
-                    with st.spinner("Traitement en cours..."):
+                    with st.spinner("Envoi en cours..."):
                         if add_refus_row(new_row):
-                            body = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
-                            success, msg = send_actual_email(f_email_dest, f"ALERTE REFUS : {f_fourn}", body, f_file)
+                            body_mail = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
+                            success, mail_msg = send_actual_email(f_emails_choisis, f"ALERTE REFUS : {f_fourn}", body_mail, f_file)
                             
                             if success:
                                 st.balloons()
-                                st.success(f"✅ Refus enregistré et e-mail envoyé à {f_email_dest}")
+                                st.success(f"✅ Enregistré et envoyé à {len(f_emails_choisis)} destinataires.")
                             else:
-                                st.warning(f"✅ Enregistré dans GSheet, mais l'e-mail a échoué : {msg}")
+                                st.warning(f"✅ Enregistré sur GSheet, mais erreur mail : {mail_msg}")
                 else:
-                    st.error("⚠️ Veuillez remplir le Fournisseur, le BL et l'Email.")
+                    st.error("⚠️ Veuillez remplir le Fournisseur, le BL et au moins un Destinataire.")
 
         # Affichage de l'historique
         st.divider()
