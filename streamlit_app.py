@@ -317,19 +317,19 @@ def main():
 			else:
 				st.error("⚠️ Veuillez remplir le Fournisseur, le BL et l'Email.")
 
-	    # Affichage de l'historique
-	    st.divider()
-	    st.subheader("📜 Historique des derniers refus")
-	    df_refus = load_data(WS_REFUS, COLUMNS_REFUS)
-	    
-	    if not df_refus.empty:
-	        gb = GridOptionsBuilder.from_dataframe(df_refus)
-	        gb.configure_default_column(resizable=True, sortable=True, filterable=True)
-	        gb.configure_pagination(paginationPageSize=10)
-	        grid_options = gb.build()
-	        AgGrid(df_refus, gridOptions=grid_options, theme='alpine', height=400)
-	    else:
-	        st.info("Aucun historique disponible.")
+	# Affichage de l'historique
+	st.divider()
+	st.subheader("📜 Historique des derniers refus")
+	df_refus = load_data(WS_REFUS, COLUMNS_REFUS)
+	
+	if not df_refus.empty:
+		gb = GridOptionsBuilder.from_dataframe(df_refus)
+		gb.configure_default_column(resizable=True, sortable=True, filterable=True)
+		gb.configure_pagination(paginationPageSize=10)
+		grid_options = gb.build()
+		AgGrid(df_refus, gridOptions=grid_options, theme='alpine', height=400)
+	else:
+		st.info("Aucun historique disponible.")
 
     # --- PAGE 2 : SUIVI TRANSPORT ---
     # --- Lié à la page TRANSPORT  ---
