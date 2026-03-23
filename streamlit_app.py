@@ -473,7 +473,11 @@ def main():
         
         # Chargement propre des données pour l'historique
         df_historique = load_data(WS_TRANSPORT, COLUMNS_TRANSPORT)
+        num_id = len(df_historique)
         
+        with st.form("form_transport", clear_on_submit=True):
+            st.subheader(f"Saisie Transport n°{num_id}")
+			
         if not df_historique.empty:
             AgGrid(df_historique, gridOptions=get_standard_grid_options(df_historique), height=400, theme='balham', key="grid_t_page_final")
         else:
