@@ -49,7 +49,7 @@ def authenticate_gsheet():
         st.error(f"❌ Erreur d'authentification : {e}")
         return None
 
-ef load_data(ws_name, cols):
+def load_data(ws_name, cols):
     """Charge les données d'un onglet en ignorant les colonnes vides dupliquées."""
     try:
         gc = authenticate_gsheet()
