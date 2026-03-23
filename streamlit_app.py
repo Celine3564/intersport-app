@@ -50,6 +50,7 @@ def authenticate_gsheet():
         return None
 
 def load_data(ws_name, cols):
+    """Charge les données d'un onglet spécifique."""
     try:
         gc = authenticate_gsheet()
         if not gc: return pd.DataFrame(columns=cols)
@@ -57,10 +58,15 @@ def load_data(ws_name, cols):
         ws = sh.worksheet(ws_name)
         data = ws.get_all_records()
         df = pd.DataFrame(data)
-        if df.empty: return pd.DataFrame(columns=cols)
-        # Affichage du plus récent au plus ancien
-        return df.reindex(columns=cols).fillna('').iloc[::-1]
-    except Exception:
+        if df.empty: 
+            return pd.DataFrame(columns=cols)
+        # S'assurer que toutes les colonnes attendues sont présentes
+        for col in cols:
+            if col not in df.columns:
+                df[col] = ""
+        return df[cols].fillna('').iloc[::-1]
+    except Exception as e:
+        # Si l'onglet n'existe pas ou est vide sans en-tête
         return pd.DataFrame(columns=cols)
 
 def save_data_to_gsheet(df_updated):
