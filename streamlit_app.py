@@ -17,6 +17,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk'
 WS_DATA = 'DATA'
 WS_REFUS = 'REFUS'
+WS_MAILS = 'MAIL' # Onglet contenant la liste des destinataires
 apiKey = "" # La clé API est injectée automatiquement par l'environnement
 
 # Liste complète des colonnes pour assurer la cohérence du Google Sheet
@@ -199,6 +200,21 @@ def extreme_clean(text):
     # Garde uniquement les caractères imprimables standards pour les paramètres de connexion
     return re.sub(r'[^\x20-\x7E]', '', text).strip()
 
+def load_mail_list():
+    """Récupère la liste des adresses emails depuis la première colonne de l'onglet MAIL"""
+    try:
+        gc = authenticate_gsheet()
+        if not gc: return []
+        sh = gc.open_by_key(SHEET_ID)
+        ws = sh.worksheet(WS_MAILS)
+        emails = ws.col_values(1) 
+        # On ignore la première ligne si c'est un titre (ex: "Destinataires")
+        if emails and ("@" not in emails[0]):
+            emails = emails[1:]
+        # Nettoyage et filtrage pour ne garder que les formats valides
+        return [e.strip() for e in emails if "@" in e]
+    except Exception:
+        return []
 
         
 
@@ -273,9 +289,16 @@ def main():
             f_bl = col2.text_input("Num du BL")
             
             st.divider()
-            f_email_dest = st.text_input("📧 Envoyer l'alerte e-mail à :", placeholder="exemple@reseau-intersport.fr")
-            f_comment = st.text_area("Motif détaillé du refus")
-            
+            # MULTISELECT AVEC SAISIE LIBRE
+            # On utilise une liste déroulante qui accepte plusieurs choix
+            # et qui permet aussi de taper du texte
+            f_emails_choisis = st.multiselect(
+                "📧 Destinataires de l'alerte (Sélectionnez ou tapez un nouveau mail) :",
+                options=base_mails,
+                default=[],
+                help="Vous pouvez sélectionner plusieurs noms ou saisir une adresse complète puis appuyer sur Entrée."
+            )
+			f_comment = st.text_area("Motif détaillé du refus")
             f_file = st.file_uploader("📎 Joindre une photo ou un document (facultatif)", type=["png", "jpg", "jpeg", "pdf"])
             
             submit = st.form_submit_button("🚀 Enregistrer et Envoyer le mail")
