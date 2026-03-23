@@ -301,7 +301,7 @@ def main():
         contacts_map = load_mail_list_v2()
         liste_labels = list(contacts_map.keys())
         
-        with st.form("main_form_refus"):
+        with st.form("main_form_refus", clear_on_submit=True):
             st.subheader("Détails de la livraison")
             col1, col2 = st.columns(2)
             with col1:
@@ -349,8 +349,9 @@ def main():
                             success, msg = send_actual_email(f_emails_choisis, f"REFUS MARCHANDISE : {f_fourn}", contenu, f_file)
                             
                             if success:
-                                st.balloons()
-                                st.success(f"✅ Enregistré et mail envoyé à {len(f_emails_choisis)} contact(s).")
+                                st.success(f"✅ Refus enregistré et mail envoyé.")
+                                st.toast("Remise à zéro du formulaire...", icon="🔄")
+                                st.rerun()
                             else:
                                 st.error(f"❌ GSheet OK mais erreur mail : {msg}")
                         else:
