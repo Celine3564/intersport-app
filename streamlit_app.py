@@ -405,11 +405,11 @@ def main():
                 if f_fourn and f_bl and f_emails_choisis:
                     with st.spinner("Traitement logistique..."):
                         row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
-						if add_row_gsheet(WS_REFUS, row):
+                        if add_row_gsheet(WS_REFUS, row):
                             contenu_mail = generate_ai_content(f_magasin, f_fourn, f_bl, f_comment, mode="refus")
                             success, msg_mail = send_actual_email(f_emails_choisis, f"REFUS MARCHANDISE : {f_fourn}", contenu_mail, f_file)
-                            
                             if success:
+  
                                 st.balloons()						
                                 st.success(f"✅ Refus enregistré et mail envoyé.")
                                 st.toast("Remise à zéro du formulaire...", icon="🔄")
