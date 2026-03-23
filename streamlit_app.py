@@ -5,6 +5,7 @@ from datetime import datetime
 import requests
 import smtplib
 import re
+import io
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -78,6 +79,12 @@ def save_data_to_gsheet(df_updated):
         st.error(f"Erreur lors de la sauvegarde : {e}")
         return False
 
+def to_excel(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Refus')
+    return output.getvalue()
+	
 #DEF TABLEAU MISE EN PAGE
 def get_standard_grid_options(df, page_size=20, editable_cols=[]):
     """
@@ -296,14 +303,14 @@ def main():
         st.info("💡 Utilisez les cases vides sous les titres de colonnes pour filtrer.")
         df_refus = load_data(WS_REFUS, COLUMNS_REFUS)        
         if not df_refus.empty:
-            # Extraction CSV rapide
+            # Extraction EXCEL rapide
+            excel_data = to_excel(df_refus)
             st.download_button(
-                label="📥 Extraire les données (CSV)",
-                data=df_refus.to_csv(index=False).encode('utf-8'),
-                file_name=f'refus_logistique_{datetime.now().strftime("%Y%m%d")}.csv',
-                mime='text/csv',
+                label="📥 Extraire les données (EXCEL)",
+                data=excel_data,
+                file_name=f'refus_logistique_{datetime.now().strftime("%Y%m%d")}.xlsx',
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             )
-            
             grid_options = get_standard_grid_options(df_refus)
             
             # --- 2. EMPLACEMENT UTILISATION ---
