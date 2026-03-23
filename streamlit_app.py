@@ -276,9 +276,9 @@ def main():
 	# --- PAGE REFUS DE MARCHANDISE---
     # --- Lié à la page REFUS  ---
     elif st.session_state.page == 'refus':
-		st.title("🚚 Déclaration de Refus")
+        st.title("🚚 Déclaration de Refus")
         
-        # On charge les mails avant le formulaire
+		# On charge les mails avant le formulaire
         base_mails = load_mail_list()
         
         # DEBUT DU FORMULAIRE
