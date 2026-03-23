@@ -277,7 +277,7 @@ def main():
     
 	# --- PAGE REFUS DE MARCHANDISE---
     # --- Lié à la page REFUS  ---
-	elif st.session_state.page == 'refus':
+    elif st.session_state.page == 'refus':
         st.title("📦 Gestion des Refus de Marchandise")
         
         # Formulaire d'entrée
