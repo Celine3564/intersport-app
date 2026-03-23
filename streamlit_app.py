@@ -281,6 +281,7 @@ def main():
         
         pages = {
             'dashboard': "📊 Tableau de Bord",
+			'debug': "🔍 Vérifier la connexion GSheet",
             'refus': "🚚 Refus de marchandise ⚠️",
             'transport': "🚚 Suivi Transport",
             'pdc': "⚠️ Pas de Commande",
@@ -371,7 +372,7 @@ def main():
                             success, msg = send_actual_email(f_emails_choisis, f"REFUS MARCHANDISE : {f_fourn}", contenu, f_file)
                             
                             if success:
-                                #  st.rerun()								
+                                st.balloons()						
                                 st.success(f"✅ Refus enregistré et mail envoyé.")
                                 st.toast("Remise à zéro du formulaire...", icon="🔄")
 
@@ -454,6 +455,38 @@ def main():
         if not df_transp.empty:
             AgGrid(df_transp, gridOptions=get_standard_grid_options(df_transp), height=400, theme='balham')
 
+
+	
+    elif st.session_state.page == 'debug':
+        st.title("🔍 Diagnostic de Connexion")
+        try:
+            gc = authenticate_gsheet()
+            sh = gc.open_by_key(SHEET_ID)
+            st.success(f"✅ Connecté au Google Sheet : {sh.title}")
+            
+            onglets = [w.title for w in sh.worksheets()]
+            st.write(f"Onglets trouvés : {onglets}")
+            
+            if WS_TRANSPORT in onglets:
+                ws = sh.worksheet(WS_TRANSPORT)
+                header = ws.row_values(1)
+                st.write(f"✅ Onglet '{WS_TRANSPORT}' trouvé.")
+                st.write(f"Colonnes actuelles dans GSheet : {header}")
+                st.write(f"Colonnes attendues par Python : {COLUMNS_TRANSPORT}")
+                
+                test_data = ws.get_all_records()
+                st.write(f"Nombre de lignes de données : {len(test_data)}")
+                if test_data:
+                    st.json(test_data[0])
+            else:
+                st.error(f"❌ L'onglet '{WS_TRANSPORT}' est introuvable !")
+                if st.button("Créer l'onglet TRANSPORT"):
+                    sh.add_worksheet(title=WS_TRANSPORT, rows="100", cols="20")
+                    sh.worksheet(WS_TRANSPORT).append_row(COLUMNS_TRANSPORT)
+                    st.rerun()
+        except Exception as e:
+            st.error(f"Erreur de diagnostic : {e}")
+			
     # --- PAGE 3 : PAS DE COMMANDE ---
     # --- Lié à la page PDC  ---
     elif st.session_state.page == 'pdc':
