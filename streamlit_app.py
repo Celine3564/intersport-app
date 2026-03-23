@@ -10,7 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from email.header import Header
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 # --- CONFIGURATION & CONSTANTES ---
 SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk'
@@ -296,15 +296,17 @@ def main():
         st.info("💡 Utilisez les cases vides sous les titres de colonnes pour filtrer.")
         df_refus = load_data(WS_REFUS, COLUMNS_REFUS)        
         if not df_refus.empty:
-            # --- LE BOUTON D'EXTRACTION SE TROUVE ICI ---
+            # Extraction CSV rapide
             st.download_button(
                 label="📥 Extraire les données (CSV)",
                 data=df_refus.to_csv(index=False).encode('utf-8'),
                 file_name=f'refus_logistique_{datetime.now().strftime("%Y%m%d")}.csv',
                 mime='text/csv',
             )
+            
             grid_options = get_standard_grid_options(df_refus)
             
+            # --- 2. EMPLACEMENT UTILISATION ---
             AgGrid(
                 df_refus, 
                 gridOptions=grid_options, 
