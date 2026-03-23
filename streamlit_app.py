@@ -298,13 +298,20 @@ def main():
             
             st.divider()
             
-            # Champ Multiselect pour les emails
-            f_emails_choisis = st.multiselect(
-                "📧 Destinataires (Sélectionnez ou saisissez un mail)",
-                options=base_mails,
-                default=[],
-                help="Appuyez sur Entrée après avoir saisi un nouvel email."
-            )
+			# GESTION DES DESTINATAIRES
+            if not base_mails:
+                # Si la liste est vide, on permet la saisie manuelle séparée par des virgules
+                st.warning("⚠️ Impossible de lire la liste des e-mails dans GSheet.")
+                f_emails_raw = st.text_input("📧 Saisir les e-mails manuellement (séparés par une virgule) :")
+                f_emails_choisis = [e.strip() for e in f_emails_raw.split(",") if "@" in e]
+            else:
+                # C'EST ICI QUE CA SE PASSE : st.multiselect permet d'en choisir autant qu'on veut
+                f_emails_choisis = st.multiselect(
+                    "📧 Destinataires (Sélectionnez dans la liste ou saisissez un nouvel email) :",
+                    options=base_mails,
+                    default=[],
+                    help="Vous pouvez choisir plusieurs e-mails ou en taper des nouveaux et valider par Entrée."
+                )
             
             f_comment = st.text_area("Motif du refus")
             f_file = st.file_uploader("📎 Pièce jointe", type=["png", "jpg", "jpeg", "pdf"])
