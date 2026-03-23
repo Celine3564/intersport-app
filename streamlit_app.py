@@ -288,8 +288,9 @@ def main():
     elif st.session_state.page == 'refus':
         st.title("🚚 Déclaration de Refus")
         
-		# On charge les mails avant le formulaire
-        base_mails = load_mail_list()
+		# Chargement du dictionnaire {Label: Email}
+        mail_mapping = load_mail_list_v2()
+        options_labels = list(mail_mapping.keys())
         
         # DEBUT DU FORMULAIRE
         with st.form("form_refus_unique"):
