@@ -296,15 +296,25 @@ def main():
         st.info("💡 Utilisez les cases vides sous les titres de colonnes pour filtrer.")
         df_refus = load_data(WS_REFUS, COLUMNS_REFUS)        
         if not df_refus.empty:
-            # Appel de la fonction mutualisée
+            # --- LE BOUTON D'EXTRACTION SE TROUVE ICI ---
+            st.download_button(
+                label="📥 Extraire les données (CSV)",
+                data=df_refus.to_csv(index=False).encode('utf-8'),
+                file_name=f'refus_logistique_{datetime.now().strftime("%Y%m%d")}.csv',
+                mime='text/csv',
+            )
+            
             grid_options = get_standard_grid_options(df_refus)
+            
             AgGrid(
                 df_refus, 
                 gridOptions=grid_options, 
                 theme='balham',
                 height=600, 
                 width='100%',
-                update_mode=GridUpdateMode.VALUE_CHANGED
+                update_mode=GridUpdateMode.VALUE_CHANGED,
+                data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+                allow_unsafe_jscode=True
             )
         else:
             st.info("Aucun refus enregistré.")
