@@ -572,7 +572,7 @@ def main():
                             if success:
                                 st.success("✅ Alerte PDC envoyée à l'acheteur.")
                                 st.balloons()
-                                st.rerun()
+                                #st.rerun()
                             else:
                                 st.warning(f"✅ Enregistré mais erreur mail : {msg}")
                 else:
