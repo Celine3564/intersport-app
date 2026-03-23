@@ -460,7 +460,7 @@ def main():
                         row_t = [next_id, t_magasin, t_nom, t_palettes, t_poids, t_comment, t_abime, t_litige]
                         if add_row_gsheet(WS_TRANSPORT, row_t):
 							st.rerun()
-                            st.success(f"✅ Transport n°{next_id} enregistré !")
+							st.success(f"✅ Transport n°{next_id} enregistré !")
 
                         else:
                             st.error("❌ Erreur lors de l'enregistrement.")
