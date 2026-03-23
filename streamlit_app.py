@@ -189,6 +189,16 @@ def generate_mail_content(magasin, fournisseur, bl, commentaire):
         return response.json()['candidates'][0]['content']['parts'][0]['text']
     except:
         return f"Refus du BL {bl} ({fournisseur}) au magasin {magasin}.\nMotif : {commentaire}"
+		
+def generate_ai_content(magasin, fournisseur, bl, commentaire):
+    """Génère le corps du mail via Gemini ou fallback manuel."""
+    prompt = f"Rédige un mail professionnel court pour notifier un refus de marchandise au magasin {magasin}. Fournisseur: {fournisseur}, BL: {bl}. Motif du refus: {commentaire}. Signé: Service Logistique."
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
+    try:
+        response = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=10)
+        return response.json()['candidates'][0]['content']['parts'][0]['text']
+    except:
+        return f"Bonjour,\n\nRefus BL {bl} du fournisseur {fournisseur} au magasin {magasin}.\nMotif: {commentaire}\n\nCordialement,\nService Logistique"
 
 
 def extreme_clean(text):
