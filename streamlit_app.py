@@ -38,7 +38,7 @@ COLUMNS_TRANSPORT = [
 ]
 
 COLUMNS_PDC = [
-    'Fournisseur', 'NuméroBL', 'DateReceptionPhysique', 'Acheteur', 
+    'Fournisseur', 'NuméroBL', 'DateReceptionPhysique', 'Commentaire_PDC', 'Acheteur', 
     'mail acheteur', 'date relance', 'Nombre de relance'
 ]
 
@@ -225,24 +225,43 @@ def send_actual_email(destinataires_list, subject, body, attachment=None):
     except Exception as e:
         return False, str(e)
 
-def generate_mail_content(magasin, fournisseur, bl, commentaire):
-    prompt = f"Rédige un mail pro court: Refus de marchandise. Magasin {magasin}, Fournisseur {fournisseur}, BL {bl}. Motif: {commentaire}."
+def generate_ai_content(magasin, fournisseur, bl, commentaire, mode):
+    """
+    Génère le corps du mail via Gemini en fonction du mode : 'refus' ou 'pdc'.
+    """
+    if mode == "pdc":
+        prompt = (
+            f"Tu es le Service Logistique. Rédige un mail très court et professionnel à un acheteur. "
+            f"Contexte : Pas de commande trouvée pour une réception. "
+            f"Fournisseur : {fournisseur}, BL n° : {bl}. "
+            f"Phrase obligatoire : 'J'ai reçu ce BL mais je n'ai pas de commande dans NOZYMAG, pouvez-vous me donner des indications ?' "
+            f"Commentaire du réceptionnaire : {commentaire}. "
+            f"Le ton doit être neutre et efficace."
+        )
+    elif mode == "refus":
+        prompt = (
+            f"Tu es le Service Logistique. Rédige un mail professionnel court pour notifier un refus de marchandise au magasin {magasin}. "
+            f"Fournisseur : {fournisseur}, BL : {bl}. Motif du refus : {commentaire}. "
+            f"Signé : Service Logistique."
+        )
+    else:
+        return "Message par défaut : Information logistique."
+
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
+    
     try:
         response = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=10)
         return response.json()['candidates'][0]['content']['parts'][0]['text']
-    except:
-        return f"Refus du BL {bl} ({fournisseur}) au magasin {magasin}.\nMotif : {commentaire}"
-		
-def generate_ai_content(magasin, fournisseur, bl, commentaire):
-    """Génère le corps du mail via Gemini ou fallback manuel."""
-    prompt = f"Rédige un mail professionnel court pour notifier un refus de marchandise au magasin {magasin}. Fournisseur: {fournisseur}, BL: {bl}. Motif du refus: {commentaire}. Signé: Service Logistique."
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={apiKey}"
-    try:
-        response = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=10)
-        return response.json()['candidates'][0]['content']['parts'][0]['text']
-    except:
-        return f"Bonjour,\n\nRefus BL {bl} du fournisseur {fournisseur} au magasin {magasin}.\nMotif: {commentaire}\n\nCordialement,\nService Logistique"
+    except Exception:
+        # Fallback manuel si l'API échoue
+        if mode == "pdc":
+            body = f"Bonjour,\n\nJ'ai reçu ce BL n°{bl} du fournisseur {fournisseur} mais je n'ai pas de commande dans NOZYMAG.\n\nPouvez-vous me donner des indications ?"
+            if commentaire: body += f"\n\nNote : {commentaire}"
+            body += "\n\nCordialement,\nService Logistique"
+            return body
+        else:
+            return f"Bonjour,\n\nNous vous informons du refus du BL {bl} (Fournisseur : {fournisseur}) pour le magasin {magasin}.\nMotif : {commentaire}\n\nCordialement,\nService Logistique"
+
 
 
 def extreme_clean(text):
@@ -386,12 +405,9 @@ def main():
                 if f_fourn and f_bl and f_emails_choisis:
                     with st.spinner("Traitement logistique..."):
                         row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
-                        if add_row_gsheet(WS_REFUS, row):
-                            # IA ou message manuel
-                            contenu = generate_ai_content(f_magasin, f_fourn, f_bl, f_comment)
-                            
-                            # ENVOI DU MAIL avec la variable f_emails_choisis
-                            success, msg = send_actual_email(f_emails_choisis, f"REFUS MARCHANDISE : {f_fourn}", contenu, f_file)
+						if add_row_gsheet(WS_REFUS, row):
+                            contenu_mail = generate_ai_content(f_magasin, f_fourn, f_bl, f_comment, mode="refus")
+                            success, msg_mail = send_actual_email(f_emails_choisis, f"REFUS MARCHANDISE : {f_fourn}", contenu_mail, f_file)
                             
                             if success:
                                 st.balloons()						
@@ -531,6 +547,7 @@ def main():
                 p_date = st.date_input("Date Réception Physique", datetime.now())
             with c2:
                 p_label_acheteur = st.selectbox("Acheteur", options=[""] + liste_labels)
+                p_comment = st.text_area("Commentaire (optionnel)", help="Précisions pour l'acheteur")
             
             st.divider()
             st.info("ℹ️ La pièce jointe est obligatoire pour signaler un PDC.")
@@ -546,11 +563,11 @@ def main():
                         mail_acheteur = contacts_map[p_label_acheteur]
                         nom_acheteur = p_label_acheteur.split(" (")[0]
                         
-                        # Ajout GSheet : Fournisseur, NuméroBL, Date, Acheteur, mail, date_relance, nb_relance
-                        row_pdc = [p_fourn, p_bl, str(p_date), nom_acheteur, mail_acheteur, str(datetime.now().date()), 0]
+                        # Ajout GSheet : Fournisseur, NuméroBL, Date, Acheteur, mail, date_relance, nb_relance, Commentaire_PDC
+                        row_pdc = [p_fourn, p_bl, str(p_date), nom_acheteur, mail_acheteur, str(datetime.now().date()), 0, p_comment]
                         
                         if add_row_gsheet(WS_PDC, row_pdc):
-                            contenu = generate_ai_content("", p_fourn, p_bl, "", mode="pdc")
+                            contenu = generate_ai_content("", p_fourn, p_bl, p_comment, mode="pdc")
                             success, msg = send_actual_email([mail_acheteur], f"PDC - BL {p_bl} - {p_fourn}", contenu, p_file)
                             if success:
                                 st.success("✅ Alerte PDC envoyée à l'acheteur.")
