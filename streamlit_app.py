@@ -335,23 +335,23 @@ def main():
             f_comment = st.text_area("Motif du refus")
             f_file = st.file_uploader("📎 Pièce jointe", type=["png", "jpg", "jpeg", "pdf"])
             
-            # BOUTON DE VALIDATION (Obligatoire dans un formulaire)
+            # BOUTON DE VALIDATION (Important pour éviter l'erreur "Missing Submit Button")
             submit_button = st.form_submit_button("🚀 Valider l'enregistrement")
             
             if submit_button:
                 if f_fourn and f_bl and f_emails_choisis:
                     new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
-                    with st.spinner("Traitement..."):
+                    with st.spinner("Enregistrement et envoi..."):
                         if add_refus_row(new_row):
                             body_mail = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
                             success, mail_msg = send_actual_email(f_emails_choisis, f"ALERTE REFUS : {f_fourn}", body_mail, f_file)
                             if success:
                                 st.balloons()
-                                st.success(f"✅ Enregistré et envoyé à {len(f_emails_choisis)} personne(s).")
+                                st.success(f"✅ Refus enregistré et mail envoyé à {len(f_emails_choisis)} personnes.")
                             else:
-                                st.warning(f"✅ GSheet OK, mais erreur Mail : {msg}")
+                                st.warning(f"✅ GSheet mis à jour, mais erreur mail : {mail_msg}")
                 else:
-                    st.error("⚠️ Champs obligatoires : Fournisseur, BL et au moins un e-mail.")
+                    st.error("⚠️ Veuillez remplir le Fournisseur, le BL et au moins un e-mail.")
 
         # Affichage de l'historique
         st.divider()
