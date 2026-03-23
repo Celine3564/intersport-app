@@ -200,21 +200,31 @@ def extreme_clean(text):
     # Garde uniquement les caractères imprimables standards pour les paramètres de connexion
     return re.sub(r'[^\x20-\x7E]', '', text).strip()
 
-def load_mail_list():
-    """Récupère la liste des adresses emails depuis la première colonne de l'onglet MAIL"""
+
+def load_mail_list_v2():
+    """Charge les noms et emails depuis l'onglet MAIL (Colonnes A et B)"""
     try:
         gc = authenticate_gsheet()
-        if not gc: return []
+        if not gc: return {}
         sh = gc.open_by_key(SHEET_ID)
         ws = sh.worksheet(WS_MAILS)
-        emails = ws.col_values(1) 
-        # On ignore la première ligne si c'est un titre (ex: "Destinataires")
-        if emails and ("@" not in emails[0]):
-            emails = emails[1:]
-        # Nettoyage et filtrage pour ne garder que les formats valides
-        return [e.strip() for e in emails if "@" in e]
+        # Récupère toutes les valeurs des colonnes A (Nom) et B (Mail)
+        data = ws.get_all_values()
+        if not data:
+            return {}
+        
+        mapping = {}
+        for row in data:
+            if len(row) >= 2:
+                nom = str(row[0]).strip()
+                email = str(row[1]).strip()
+                if "@" in email:
+                    # On crée une étiquette lisible "Nom (email)"
+                    label = f"{nom} ({email})" if nom and nom.lower() != "nom" else email
+                    mapping[label] = email
+        return mapping
     except Exception:
-        return []
+        return {}
 
         
 
@@ -298,20 +308,28 @@ def main():
             
             st.divider()
             
-			# GESTION DES DESTINATAIRES
-            if not base_mails:
-                # Si la liste est vide, on permet la saisie manuelle séparée par des virgules
-                st.warning("⚠️ Impossible de lire la liste des e-mails dans GSheet.")
+            # GESTION DES DESTINATAIRES
+            if not options_labels:
+                st.warning("⚠️ Liste d'e-mails vide ou inaccessible dans GSheet (Onglet 'MAIL').")
                 f_emails_raw = st.text_input("📧 Saisir les e-mails manuellement (séparés par une virgule) :")
-                f_emails_choisis = [e.strip() for e in f_emails_raw.split(",") if "@" in e]
+                destinataires_finaux = [e.strip() for e in f_emails_raw.split(",") if "@" in e]
             else:
-                # C'EST ICI QUE CA SE PASSE : st.multiselect permet d'en choisir autant qu'on veut
-                f_emails_choisis = st.multiselect(
-                    "📧 Destinataires (Sélectionnez dans la liste ou saisissez un nouvel email) :",
-                    options=base_mails,
+                labels_selectionnes = st.multiselect(
+                    "📧 Destinataires (Recherchez par Nom ou Email) :",
+                    options=options_labels,
                     default=[],
-                    help="Vous pouvez choisir plusieurs e-mails ou en taper des nouveaux et valider par Entrée."
+                    help="Vous pouvez sélectionner plusieurs personnes ou taper un nouvel email et valider avec Entrée."
                 )
+                
+                # Conversion des labels sélectionnés en adresses emails pures
+                destinataires_finaux = []
+                for lab in labels_selectionnes:
+                    if lab in mail_mapping:
+                        destinataires_finaux.append(mail_mapping[lab])
+                    else:
+                        # Cas où l'utilisateur a tapé un mail manuellement
+                        if "@" in lab:
+                            destinataires_finaux.append(lab.strip())
             
             f_comment = st.text_area("Motif du refus")
             f_file = st.file_uploader("📎 Pièce jointe", type=["png", "jpg", "jpeg", "pdf"])
