@@ -3,12 +3,14 @@ import gspread
 import streamlit as st
 from datetime import datetime
 import requests
-import re  # Importation manquante ajoutée ici
 import smtplib
+import re
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from email.header import Header
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
+from st_aggrid import AgGrid, GridOptionsBuilder
 
 # --- CONFIGURATION & CONSTANTES ---
 SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk'
@@ -156,8 +158,8 @@ def add_refus_row(row_list):
         st.error(f"❌ Erreur lors de l'écriture dans Google Sheets : {e}")
         return False
 
-def send_actual_email(to_email, subject, body):
-    """Envoi SMTP sécurisé et nettoyé"""
+def send_actual_email(to_email, subject, body, attachment=None):
+    """Envoi SMTP sécurisé avec support de pièce jointe"""
     try:
         if "email" not in st.secrets:
             return False, "Config e-mail manquante."
@@ -169,13 +171,24 @@ def send_actual_email(to_email, subject, body):
         clean_from = extreme_clean(mail_config["sender_email"])
         clean_password = extreme_clean(mail_config["sender_password"])
         clean_smtp = extreme_clean(mail_config["smtp_server"])
-		
+        
         msg = MIMEMultipart()
         msg['From'] = clean_from
         msg['To'] = clean_to
         msg['Subject'] = Header(subject, 'utf-8').encode()
         
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
+
+        # Gestion de la pièce jointe
+        if attachment is not None:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(attachment.read())
+            encoders.encode_base64(part)
+            part.add_header(
+                'Content-Disposition',
+                f'attachment; filename="{attachment.name}"',
+            )
+            msg.attach(part)
 
         server = smtplib.SMTP(clean_smtp, int(mail_config["smtp_port"]))
         server.starttls()
