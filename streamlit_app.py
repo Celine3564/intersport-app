@@ -141,47 +141,41 @@ def add_refus_row(row_list):
         st.error(f"❌ Erreur lors de l'écriture dans Google Sheets : {e}")
         return False
 
-def send_actual_email(to_email, subject, body, attachment=None):
-    """Envoi SMTP sécurisé avec support de pièce jointe"""
+def send_actual_email(destinataires_list, subject, body, attachment=None):
+    """
+    Envoie un e-mail réel.
+    destinataires_list : Liste Python d'adresses e-mails propres.
+    """
     try:
-        if "email" not in st.secrets:
-            return False, "Config e-mail manquante."
-            
-        mail_config = st.secrets["email"]
-                # Nettoyage rigoureux des emails
-        destinatarires_clean = [extreme_clean(m) for m in to_emails if "@" in str(m)]
-
-        if not destinatarires_clean:
-            return False, "Aucun destinataire valide trouvé."
-			
-        # Nettoyage strict pour la connexion
-        clean_to = extreme_clean(to_email)
-        clean_from = extreme_clean(mail_config["sender_email"])
-        clean_password = extreme_clean(mail_config["sender_password"])
-        clean_smtp = extreme_clean(mail_config["smtp_server"])
+        if "email" not in st.secrets: 
+            return False, "Configuration e-mail manquante."
         
+        config = st.secrets["email"]
+        sender = extreme_clean(config["sender_email"])
+        
+        # Nettoyage de la liste des destinataires
+        clean_dests = [extreme_clean(m) for m in destinataires_list if "@" in str(m)]
+        if not clean_dests:
+            return False, "Aucun destinataire valide."
+
         msg = MIMEMultipart()
-        msg['From'] = clean_from
-        msg['To'] = clean_to
+        msg['From'] = sender
+        msg['To'] = ", ".join(clean_dests)
         msg['Subject'] = Header(subject, 'utf-8').encode()
-        
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
-
-        # Gestion de la pièce jointe
+        
         if attachment is not None:
             part = MIMEBase('application', 'octet-stream')
             part.set_payload(attachment.read())
             encoders.encode_base64(part)
-            part.add_header(
-                'Content-Disposition',
-                f'attachment; filename="{attachment.name}"',
-            )
+            part.add_header('Content-Disposition', f'attachment; filename="{attachment.name}"')
             msg.attach(part)
-
-        server = smtplib.SMTP(clean_smtp, int(mail_config["smtp_port"]))
+            
+        server = smtplib.SMTP(extreme_clean(config["smtp_server"]), int(config["smtp_port"]))
         server.starttls()
-        server.login(clean_from, clean_password)
-        server.sendmail(mail_config["sender_email"], destinatarires_clean, msg.as_string())
+        server.login(sender, extreme_clean(config["sender_password"]))
+        # On passe la liste Python directement
+        server.sendmail(sender, clean_dests, msg.as_string())
         server.quit()
         return True, "Succès"
     except Exception as e:
@@ -293,70 +287,66 @@ def main():
     elif st.session_state.page == 'refus':
         st.title("🚚 Déclaration de Refus")
         
-		# Chargement du dictionnaire {Label: Email}
-        mail_mapping = load_mail_list_v2()
-        options_labels = list(mail_mapping.keys())
+        # Pré-chargement des contacts
+        contacts_map = load_mail_list_v2()
+        liste_labels = list(contacts_map.keys())
         
-        # DEBUT DU FORMULAIRE
-        with st.form("form_refus_unique"):
-            st.subheader("📝 Détails du refus")
-            
-            # Correction de l'erreur d'affichage des colonnes
-            col_input1, col_input2 = st.columns(2)
-            
-            with col_input1:
-                f_magasin = st.selectbox("Magasin concerné", ["BAYONNE", "BIDART", "URRUGNE", "PMI"])
+        with st.form("main_form_refus"):
+            st.subheader("Détails de la livraison")
+            col1, col2 = st.columns(2)
+            with col1:
+                f_magasin = st.selectbox("Magasin", ["BAYONNE", "BIDART", "URRUGNE", "PMI"])
                 f_date = st.date_input("Date du refus", datetime.now())
-            
-            with col_input2:
-                f_fourn = st.text_input("Nom du fournisseur")
-                f_bl = st.text_input("Numéro du BL")
+            with col2:
+                f_fourn = st.text_input("Fournisseur")
+                f_bl = st.text_input("Numéro de BL")
             
             st.divider()
             
-			 # GESTION DES DESTINATAIRES
-            if not options_labels:
-                st.warning("⚠️ Liste d'e-mails vide ou inaccessible dans GSheet (Onglet 'MAIL').")
-                f_emails_raw = st.text_input("📧 Saisir les e-mails manuellement (séparés par une virgule) :")
-                f_emails_choisis = [e.strip() for e in f_emails_raw.split(",") if "@" in e]
+            # Gestion des mails
+            f_emails_choisis = []
+            if not liste_labels:
+                st.warning("⚠️ Aucun contact trouvé dans 'MAIL'.")
+                f_manual = st.text_input("Saisir emails manuels (séparés par virgule) :")
+                f_emails_choisis = [e.strip() for e in f_manual.split(",") if "@" in e]
             else:
-                labels_selectionnes = st.multiselect(
-                    "📧 Destinataires (Recherchez par Nom ou Email) :",
-                    options=options_labels,
-                    default=[],
-                    help="Vous pouvez sélectionner plusieurs personnes ou taper un nouvel email et valider avec Entrée."
+                selection = st.multiselect(
+                    "Destinataires :",
+                    options=liste_labels,
+                    help="Sélectionnez les noms ou tapez un mail + Entrée."
                 )
-                
-                # Conversion des labels sélectionnés en adresses emails pures
-                f_emails_choisis = []
-                for lab in labels_selectionnes:
-                    if lab in mail_mapping:
-                        f_emails_choisis.append(mail_mapping[lab])
-                    else:
-                        # Cas où l'utilisateur a tapé un mail manuellement
-                        if "@" in lab:
-                            f_emails_choisis.append(lab.strip()) 
+                for item in selection:
+                    if item in contacts_map:
+                        f_emails_choisis.append(contacts_map[item])
+                    elif "@" in item:
+                        f_emails_choisis.append(item.strip())
             
-            f_comment = st.text_area("Motif du refus")
-            f_file = st.file_uploader("📎 Pièce jointe", type=["png", "jpg", "jpeg", "pdf"])
+            f_comment = st.text_area("Commentaire / Motif")
+            f_file = st.file_uploader("Preuve / Photo", type=["jpg", "png", "pdf"])
             
-            # BOUTON DE VALIDATION (Important pour éviter l'erreur "Missing Submit Button")
-            submit_button = st.form_submit_button("🚀 Valider l'enregistrement")
+            # Bouton de validation (OBLIGATOIRE DANS LE FORM)
+            submit = st.form_submit_button("🚀 Enregistrer et Envoyer")
             
-            if submit_button:
+            if submit:
                 if f_fourn and f_bl and f_emails_choisis:
-                    new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
-                    with st.spinner("Enregistrement et envoi..."):
-                        if add_refus_row(new_row):
-                            body_mail = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
-                            success, mail_msg = send_actual_email(f_emails_choisis, f"ALERTE REFUS : {f_fourn}", body_mail, f_file)
+                    with st.spinner("Traitement logistique..."):
+                        row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
+                        if add_refus_row(row):
+                            # IA ou message manuel
+                            contenu = generate_ai_content(f_magasin, f_fourn, f_bl, f_comment)
+                            
+                            # ENVOI DU MAIL avec la variable f_emails_choisis
+                            success, msg = send_actual_email(f_emails_choisis, f"REFUS MARCHANDISE : {f_fourn}", contenu, f_file)
+                            
                             if success:
                                 st.balloons()
-                                st.success(f"✅ Refus enregistré et mail envoyé à {len(f_emails_choisis)} personnes.")
+                                st.success(f"✅ Enregistré et mail envoyé à {len(f_emails_choisis)} contact(s).")
                             else:
-                                st.warning(f"✅ GSheet mis à jour, mais erreur mail : {mail_msg}")
+                                st.error(f"❌ GSheet OK mais erreur mail : {msg}")
+                        else:
+                            st.error("❌ Erreur lors de l'enregistrement GSheet.")
                 else:
-                    st.error("⚠️ Veuillez remplir le Fournisseur, le BL et au moins un e-mail.")
+                    st.error("⚠️ Veuillez remplir le Fournisseur, le BL et au moins un destinataire.")
 
         # Affichage de l'historique
         st.divider()
