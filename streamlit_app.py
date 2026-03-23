@@ -461,7 +461,7 @@ def main():
                         if add_row_gsheet(WS_TRANSPORT, row_t):
                             st.success(f"✅ Transport n°{next_id} enregistré !")
                             #st.balloons()
-                            #st.rerun()
+                            st.rerun()
 
                         else:
                             st.error("❌ Erreur lors de l'enregistrement.")
@@ -479,25 +479,6 @@ def main():
         else:
             st.info("Aucun transport dans l'historique.")
 
-        df_transp = load_data(WS_TRANSPORT, COLUMNS_TRANSPORT)
-        next_id = len(df_transp) + 1
-        
-        with st.form("form_transport", clear_on_submit=True):
-            st.subheader(f"Saisie Transport n°{next_id}")
-            c1, c2 = st.columns(2)
-            with c1:
-                t_magasin = st.selectbox("Magasin", ["BAYONNE", "BIDART", "URRUGNE", "PMI"], key="t_mag")
-                t_nom = st.text_input("Nom du Transporteur")
-                t_palettes = st.number_input("Nombre de palettes", min_value=0, step=1)
-            with c2:
-                t_poids = st.number_input("Poids total (kg)", min_value=0.0, step=0.5)
-                t_abime = st.selectbox("Colis abîmé ou ouvert ?", ["NON", "OUI"])
-                t_litige = st.selectbox("Litige à la réception ?", ["NON", "OUI"])
-            
-            t_comment = st.text_area("Commentaire Livraison")
-            
-            submit_t = st.form_submit_button("🏁 Valider l'arrivée")
-	
     elif st.session_state.page == 'debug':
         st.title("🔍 Diagnostic de Connexion")
         try:
