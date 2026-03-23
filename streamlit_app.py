@@ -10,7 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from email.header import Header
-from st_aggrid import AgGrid, GridOptionsBuilder
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
 # --- CONFIGURATION & CONSTANTES ---
 SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk'
@@ -44,29 +44,17 @@ def authenticate_gsheet():
         return None
 
 def load_data(ws_name, cols):
-    """Charge les données d'un onglet spécifique"""
     try:
         gc = authenticate_gsheet()
         if not gc: return pd.DataFrame(columns=cols)
         sh = gc.open_by_key(SHEET_ID)
-        
-        # Vérification si l'onglet existe
-        titles = [w.title for w in sh.worksheets()]
-        if ws_name not in titles:
-            st.error(f"❌ L'onglet '{ws_name}' est introuvable.")
-            return pd.DataFrame(columns=cols)
-            
         ws = sh.worksheet(ws_name)
         data = ws.get_all_records()
         df = pd.DataFrame(data)
-        
-        if df.empty:
-            return pd.DataFrame(columns=cols)
-            
-        # On s'assure de ne prendre que les colonnes définies
-        return df.reindex(columns=cols).fillna('')
-    except Exception as e:
-        st.error(f"❌ Erreur de lecture {ws_name} : {e}")
+        if df.empty: return pd.DataFrame(columns=cols)
+        # Affichage du plus récent au plus ancien
+        return df.reindex(columns=cols).fillna('').iloc[::-1]
+    except Exception:
         return pd.DataFrame(columns=cols)
 
 def save_data_to_gsheet(df_updated):
@@ -90,59 +78,40 @@ def save_data_to_gsheet(df_updated):
         st.error(f"Erreur lors de la sauvegarde : {e}")
         return False
 
-
-# --- UI : COMPOSANT GRILLE ---
-def render_custom_grid(df, editable_cols=[], status_options=None):
-    """Génère une grille Ag-Grid épurée avec recherche intelligente"""
-    
-    # Ajout d'une barre de recherche globale au-dessus de la grille
-    search_term = st.text_input("🔍 Recherche rapide (Fournisseur, Numéro, etc.)", placeholder="Tapez pour filtrer...")
-
+#DEF TABLEAU MISE EN PAGE
+def get_standard_grid_options(df, page_size=20, editable_cols=[]):
+    """
+    FONCTION CENTRALISÉE : Configure tous les tableaux AgGrid du site.
+    - Filtres flottants (recherche par colonne)
+    - Pagination personnalisable
+    - Support des colonnes éditables
+    """
     gb = GridOptionsBuilder.from_dataframe(df)
     
-    # Configuration par défaut épurée
+    # Configuration par défaut
     gb.configure_default_column(
         resizable=True, 
         sortable=True, 
-        filterable=True, 
-        editable=False,
-        # On désactive le floatingFilter pour alléger visuellement
-        floatingFilter=False 
+        filter=True,
+        floatingFilter=True, 
+        minWidth=100,
+        editable=False
     )
     
-    # Configuration des colonnes éditables
+    # Configuration des colonnes spécifiques à éditer
     for col in editable_cols:
-        if col == 'StatutBL' and status_options:
-            gb.configure_column(col, editable=True, cellEditor='agSelectCellEditor', 
-                               cellEditorParams={'values': status_options})
-        else:
-            gb.configure_column(col, editable=True)
-            
-        # Style subtil pour les colonnes modifiables
-        gb.configure_column(col, cellStyle={'background-color': '#f8fafc', 'border-left': '3px solid #3b82f6'})
-
-    # Formatage spécifique
-    if 'Mt TTC' in df.columns:
-        gb.configure_column('Mt TTC', valueFormatter="x.value + ' €'")
-
-    gb.configure_pagination(paginationPageSize=15)
-    gb.configure_selection(selection_mode="multiple", use_checkbox=True)
+        if col in df.columns:
+            gb.configure_column(col, editable=True, cellStyle={'background-color': '#f0f7ff'})
     
-    # Intégration de la recherche globale dans les options
-    grid_options = gb.build()
-    if search_term:
-        grid_options['quickFilterText'] = search_term
-    
-    return AgGrid(
-        df,
-        gridOptions=grid_options,
-        update_mode=GridUpdateMode.VALUE_CHANGED,
-        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-        theme='balham', # Thème plus compact et professionnel
-        fit_columns_on_grid_load=True,
-        height=500,
-        allow_unsafe_jscode=True
+    # Pagination
+    gb.configure_pagination(
+        enabled=True, 
+        paginationAutoPageSize=False, 
+        paginationPageSize=page_size
     )
+    
+    return gb.build()
+
 
 #DEF FEUILLE REFUS
 def add_refus_row(row_list):
@@ -317,17 +286,22 @@ def main():
 
         # Affichage de l'historique
         st.divider()
-        st.subheader("📜 Historique des derniers refus")
-        df_refus = load_data(WS_REFUS, COLUMNS_REFUS)
-        
+        st.subheader("📜 Historique des refus")
+        st.info("💡 Utilisez les cases vides sous les titres de colonnes pour filtrer.")
+        df_refus = load_data(WS_REFUS, COLUMNS_REFUS)        
         if not df_refus.empty:
-            gb = GridOptionsBuilder.from_dataframe(df_refus)
-            gb.configure_default_column(resizable=True, sortable=True, filterable=True)
-            gb.configure_pagination(paginationPageSize=10)
-            grid_options = gb.build()
-            AgGrid(df_refus, gridOptions=grid_options, theme='alpine', height=400)
+            # Appel de la fonction mutualisée
+            grid_options = get_standard_grid_options(df_refus)
+            AgGrid(
+                df_refus, 
+                gridOptions=grid_options, 
+                theme='balham',
+                height=600, 
+                width='100%',
+                update_mode=GridUpdateMode.VALUE_CHANGED
+            )
         else:
-            st.info("Aucun historique disponible.")
+            st.info("Aucun refus enregistré.")
 
     # --- PAGE 2 : SUIVI TRANSPORT ---
     # --- Lié à la page TRANSPORT  ---
