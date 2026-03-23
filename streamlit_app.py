@@ -119,7 +119,6 @@ def get_standard_grid_options(df, page_size=20, editable_cols=[]):
     
     return gb.build()
 
-
 #DEF FEUILLE REFUS
 def add_refus_row(row_list):
     """Ajoute réellement la ligne dans l'onglet REFUS"""
