@@ -275,7 +275,7 @@ def main():
         st.subheader("Dernières réceptions")
         st.dataframe(df_all.head(10), use_container_width=True)
     
-    # --- PAGE REFUS DE MARCHANDISE---
+	# --- PAGE REFUS DE MARCHANDISE---
     # --- Lié à la page REFUS  ---
 	elif st.session_state.page == 'refus':
         st.title("📦 Gestion des Refus de Marchandise")
