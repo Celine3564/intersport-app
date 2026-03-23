@@ -459,8 +459,9 @@ def main():
                     with st.spinner("Enregistrement transporteur..."):
                         row_t = [next_id, t_magasin, t_nom, t_palettes, t_poids, t_comment, t_abime, t_litige]
                         if add_row_gsheet(WS_TRANSPORT, row_t):
+							st.rerun()
                             st.success(f"✅ Transport n°{next_id} enregistré !")
-                            # st.rerun()
+
                         else:
                             st.error("❌ Erreur lors de l'enregistrement.")
                 else:
