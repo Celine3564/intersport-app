@@ -18,19 +18,23 @@ SHEET_ID = '1JT_Lq_TvPL2lQc2ArPBi48bVKdSgU2m_SyPFHSQsGtk'
 WS_DATA = 'DATA'
 WS_REFUS = 'REFUS'
 WS_MAILS = 'MAIL' # Onglet contenant la liste des destinataires
+WS_TRANSPORT = 'TRANSPORT'
 apiKey = "" # La clé API est injectée automatiquement par l'environnement
 
-# Liste complète des colonnes pour assurer la cohérence du Google Sheet
+# ONGLET DATA
 COLUMNS_DATA = [
     'NumReception', 'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
     'Livré le', 'Qté', 'Collection', 'Num Facture', 'StatutBL', 
     'Emplacement', 'NomDeballage', 'DateClotureDeballage', 'LitigesCompta', 
     'Commentaire_litige', 'NumTransport'
 ]
-
 # Colonnes basées l'onglet REFUS
 COLUMNS_REFUS = ['MAGASIN', 'Date du refus', 'Nom du fournisseur', 'Num du BL','Commentaire du refus']
-				
+# Colonnes basées l'onglet TRANSPPORT			
+COLUMNS_TRANSPORT = [
+    'NumTransport', 'Magasin', 'NomTransporteur', 'NbPalettes', 
+    'Poids_total', 'Commentaire_Livraison', 'Colis_abime_ouvert', 'LitigeReception'
+]
 
 # --- FONCTIONS TECHNIQUES ---
 def authenticate_gsheet():
@@ -85,7 +89,19 @@ def to_excel(df):
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Refus')
     return output.getvalue()
-	
+
+def add_row_gsheet(ws_name, row_list):
+    try:
+        gc = authenticate_gsheet()
+        if not gc: return False
+        sh = gc.open_by_key(SHEET_ID)
+        ws = sh.worksheet(ws_name)
+        ws.append_row(row_list)
+        return True
+    except Exception as e:
+        st.error(f"❌ Erreur GSheet : {e}")
+        return False
+		
 #DEF TABLEAU MISE EN PAGE
 def get_standard_grid_options(df, page_size=20, editable_cols=[]):
     """
@@ -341,7 +357,7 @@ def main():
                 if f_fourn and f_bl and f_emails_choisis:
                     with st.spinner("Traitement logistique..."):
                         row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
-                        if add_refus_row(row):
+                        if add_row_gsheet(WS_REFUS, row):
                             # IA ou message manuel
                             contenu = generate_ai_content(f_magasin, f_fourn, f_bl, f_comment)
                             
@@ -393,24 +409,44 @@ def main():
     # --- PAGE 2 : SUIVI TRANSPORT ---
     # --- Lié à la page TRANSPORT  ---
     elif st.session_state.page == 'transport':
-        st.header("🚚 Suivi des Numéros de Transport")
-        # On affiche tout, avec focus sur NumTransport
-        grid_res = render_custom_grid(
-            df_all[['NumReception', 'Fournisseur', 'Livré le', 'NumTransport', 'StatutBL']],
-            editable_cols=['NumTransport']
-        )
+        st.title("🚛 Arrivée d'un transporteur")
         
-        if st.button("💾 Enregistrer les modifications de transport"):
-            # Fusionner les modifs avec le dataframe principal
-            df_updated = df_all.copy()
-            new_data = pd.DataFrame(grid_res['data'])
-            for idx, row in new_data.iterrows():
-                df_updated.loc[df_updated['NumReception'] == row['NumReception'], 'NumTransport'] = row['NumTransport']
+        # Chargement historique pour calcul de l'ID auto
+        df_transp = load_data(WS_TRANSPORT, COLUMNS_TRANSPORT)
+        next_id = len(df_transp) + 1
+        
+        with st.form("form_transport", clear_on_submit=True):
+            st.subheader(f"Saisie Transport n°{next_id}")
+            c1, c2 = st.columns(2)
+            with c1:
+                t_magasin = st.selectbox("Magasin", ["BAYONNE", "BIDART", "URRUGNE", "PMI"], key="t_mag")
+                t_nom = st.text_input("Nom du Transporteur")
+                t_palettes = st.number_input("Nombre de palettes", min_value=0, step=1)
+            with c2:
+                t_poids = st.number_input("Poids total (kg)", min_value=0.0, step=0.5)
+                t_abime = st.selectbox("Colis abîmé ou ouvert ?", ["NON", "OUI"])
+                t_litige = st.selectbox("Litige à la réception ?", ["NON", "OUI"])
             
-            if save_data_to_gsheet(df_updated):
-                st.success("Transports mis à jour !")
-                st.rerun()
+            t_comment = st.text_area("Commentaire Livraison")
+            
+            submit_t = st.form_submit_button("🏁 Valider l'arrivée")
+            
+            if submit_t:
+                if t_nom:
+                    with st.spinner("Enregistrement transporteur..."):
+                        row_t = [next_id, t_magasin, t_nom, t_palettes, t_poids, t_comment, t_abime, t_litige]
+                        if add_row_gsheet(WS_TRANSPORT, row_t):
+                            st.success(f"✅ Transport n°{next_id} enregistré !")
+                            st.rerun()
+                        else:
+                            st.error("❌ Erreur lors de l'enregistrement.")
+                else:
+                    st.error("⚠️ Veuillez saisir le nom du transporteur.")
 
+        st.divider()
+        st.subheader("📜 Historique des Transports")
+        if not df_transp.empty:
+            AgGrid(df_transp, gridOptions=get_standard_grid_options(df_transp), height=400, theme='balham')
 
     # --- PAGE 3 : PAS DE COMMANDE ---
     # --- Lié à la page PDC  ---
