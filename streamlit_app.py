@@ -303,7 +303,6 @@ def main():
                 file_name=f'refus_logistique_{datetime.now().strftime("%Y%m%d")}.csv',
                 mime='text/csv',
             )
-            
             grid_options = get_standard_grid_options(df_refus)
             
             AgGrid(
