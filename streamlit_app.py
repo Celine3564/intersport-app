@@ -148,7 +148,12 @@ def send_actual_email(to_email, subject, body, attachment=None):
             return False, "Config e-mail manquante."
             
         mail_config = st.secrets["email"]
-        
+                # Nettoyage rigoureux des emails
+        destinatarires_clean = [extreme_clean(m) for m in to_emails if "@" in str(m)]
+
+        if not destinatarires_clean:
+            return False, "Aucun destinataire valide trouvé."
+			
         # Nettoyage strict pour la connexion
         clean_to = extreme_clean(to_email)
         clean_from = extreme_clean(mail_config["sender_email"])
@@ -176,7 +181,7 @@ def send_actual_email(to_email, subject, body, attachment=None):
         server = smtplib.SMTP(clean_smtp, int(mail_config["smtp_port"]))
         server.starttls()
         server.login(clean_from, clean_password)
-        server.sendmail(clean_from, [clean_to], msg.as_string())
+        server.sendmail(mail_config["sender_email"], destinatarires_clean, msg.as_string())
         server.quit()
         return True, "Succès"
     except Exception as e:
