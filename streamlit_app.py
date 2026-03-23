@@ -466,10 +466,12 @@ def main():
                         else:
                             st.error("❌ Erreur lors de l'enregistrement.")
                 else:
-                    st.error("⚠️ Veuillez saisir le nom du transporteur.")
+                    st.error("⚠️ Veuillez saisir le nom du transporteur.")					
 
         st.divider()
         st.subheader("📜 Historique des Transports")
+		
+      	df_transp = load_data(WS_TRANSPORT, COLUMNS_TRANSPORT)		
         if not df_transp.empty:
             AgGrid(df_transp, gridOptions=get_standard_grid_options(df_transp), height=400, theme='balham')
 
