@@ -283,12 +283,13 @@ def main():
             st.subheader("📝 Nouveau Refus")
             col1, col2 = st.columns(2)
             
-            f_magasin = col1.selectbox("Magasin", ["BAYONNE", "BIDART", "URRUGNE", "PMI"])
-            f_date = col1.date_input("Date du refus", datetime.now())
-            f_fourn = col2.text_input("Nom du fournisseur")
-            f_bl = col2.text_input("Num du BL")
+            f_magasin = c1.selectbox("Magasin concerné", ["BAYONNE", "BIDART", "URRUGNE", "PMI"])
+            f_date = c1.date_input("Date du refus", datetime.now())
+            f_fourn = c2.text_input("Nom du fournisseur")
+            f_bl = c2.text_input("Numéro du BL")
             
             st.divider()
+            
             # MULTISELECT AVEC SAISIE LIBRE
             # On utilise une liste déroulante qui accepte plusieurs choix
             # et qui permet aussi de taper du texte
@@ -298,11 +299,11 @@ def main():
                 default=[],
                 help="Vous pouvez sélectionner plusieurs noms ou saisir une adresse complète puis appuyer sur Entrée."
             )
-			
-			f_comment = st.text_area("Motif détaillé du refus")
-            f_file = st.file_uploader("📎 Joindre une photo ou un document (facultatif)", type=["png", "jpg", "jpeg", "pdf"])
+                
+            f_comment = st.text_area("Motif détaillé du refus")
+            f_file = st.file_uploader("📎 Pièce jointe", type=["png", "jpg", "jpeg", "pdf"])
             
-            submit = st.form_submit_button("🚀 Enregistrer et Envoyer le mail")
+            submit = st.form_submit_button("🚀 Valider et Envoyer l'alerte")
             
             if submit:
                 if f_fourn and f_bl and f_emails_choisis:
