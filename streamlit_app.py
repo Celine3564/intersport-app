@@ -473,13 +473,13 @@ def main():
         
         # Chargement propre des données pour l'historique
         df_historique = load_data(WS_TRANSPORT, COLUMNS_TRANSPORT)
-			
+		st.rerun()			
         if not df_historique.empty:
             AgGrid(df_historique, gridOptions=get_standard_grid_options(df_historique), height=400, theme='balham', key="grid_t_page_final")
         else:
             st.info("Aucun transport dans l'historique.")
 
-		st.rerun()
+
 	
     elif st.session_state.page == 'debug':
         st.title("🔍 Diagnostic de Connexion")
