@@ -82,30 +82,27 @@ def save_data_to_gsheet(df_updated):
 def get_standard_grid_options(df, page_size=20, editable_cols=[]):
     """
     FONCTION CENTRALISÉE : Configure tous les tableaux AgGrid du site.
-    Permet la saisie libre ET le tri/filtrage avancé.
+    Active la saisie libre, le filtrage et les options d'export.
     """
     gb = GridOptionsBuilder.from_dataframe(df)
     
-    # Configuration par défaut : On privilégie agTextColumnFilter pour permettre la saisie
-    # tout en laissant l'utilisateur filtrer via la barre flottante.
+    # Configuration par défaut
     gb.configure_default_column(
         resizable=True, 
         sortable=True, 
-        filter='agTextColumnFilter', # Permet la saisie de texte
-        floatingFilter=True,         # Barre de saisie sous l'entête
+        filter='agTextColumnFilter',
+        floatingFilter=True,
         minWidth=100,
         editable=False
     )
     
-    # Pour les colonnes spécifiques où on veut une aide à la sélection (comme le calendrier)
+    # Activation de l'exportation CSV (similaire à l'option "Extraire" de Streamlit)
+    gb.configure_grid_options(enableExport=True)
+    
+    # Configuration des colonnes spécifiques
     if 'Date du refus' in df.columns:
         gb.configure_column('Date du refus', filter='agDateColumnFilter')
     
-    # Si on veut transformer une colonne spécifique en "Saisie + Liste", 
-    # AgGrid Community limite l'usage simultané. On reste donc sur TextFilter 
-    # qui est le plus flexible pour la saisie rapide (votre demande principale).
-
-    # Configuration des colonnes spécifiques à éditer
     for col in editable_cols:
         if col in df.columns:
             gb.configure_column(col, editable=True, cellStyle={'background-color': '#f0f7ff'})
@@ -116,6 +113,9 @@ def get_standard_grid_options(df, page_size=20, editable_cols=[]):
         paginationAutoPageSize=False, 
         paginationPageSize=page_size
     )
+    
+    # Permet la sélection multiple pour l'extraction
+    gb.configure_selection(selection_mode="multiple", use_checkbox=True)
     
     return gb.build()
 
