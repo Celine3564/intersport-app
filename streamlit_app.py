@@ -79,10 +79,10 @@ def save_data_to_gsheet(df_updated):
         return False
 
 #DEF TABLEAU MISE EN PAGE
-def get_standard_grid_options(df, page_size=20, editable_cols=[]):
+def get_standard_grid_options(df, page_size=20, editable_cols=[], use_set_filters=True):
     """
     FONCTION CENTRALISÉE : Configure tous les tableaux AgGrid du site.
-    - Filtres flottants (recherche par colonne)
+    - Filtres en listes déroulantes (Set Filters)
     - Pagination personnalisable
     - Support des colonnes éditables
     """
@@ -93,10 +93,20 @@ def get_standard_grid_options(df, page_size=20, editable_cols=[]):
         resizable=True, 
         sortable=True, 
         filter=True,
-        floatingFilter=True, 
+        floatingFilter=True, # La ligne de filtre sous l'entête
         minWidth=100,
         editable=False
     )
+    
+    # Transformation des filtres en listes déroulantes pour les colonnes texte
+    # On utilise 'agSetColumnFilter' pour avoir une liste de choix
+    if use_set_filters:
+        for col in df.columns:
+            # On applique la liste déroulante surtout sur les colonnes catégorielles
+            if col in ['MAGASIN', 'Nom du fournisseur']:
+                gb.configure_column(col, filter='agSetColumnFilter')
+            elif col == 'Date du refus':
+                gb.configure_column(col, filter='agDateColumnFilter')
     
     # Configuration des colonnes spécifiques à éditer
     for col in editable_cols:
