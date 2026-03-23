@@ -276,50 +276,56 @@ def main():
 	# --- PAGE REFUS DE MARCHANDISE---
     # --- Lié à la page REFUS  ---
     elif st.session_state.page == 'refus':
-        st.title("📦 Gestion des Refus de Marchandise")
+		st.title("🚚 Déclaration de Refus")
         
-        # Formulaire d'entrée
-        with st.form("form_refus", clear_on_submit=True):
-            st.subheader("📝 Nouveau Refus")
-            col1, col2 = st.columns(2)
+        # On charge les mails avant le formulaire
+        base_mails = load_mail_list()
+        
+        # DEBUT DU FORMULAIRE
+        with st.form("form_refus_unique"):
+            st.subheader("📝 Détails du refus")
             
-            f_magasin = c1.selectbox("Magasin concerné", ["BAYONNE", "BIDART", "URRUGNE", "PMI"])
-            f_date = c1.date_input("Date du refus", datetime.now())
-            f_fourn = c2.text_input("Nom du fournisseur")
-            f_bl = c2.text_input("Numéro du BL")
+            # Correction de l'erreur d'affichage des colonnes
+            col_input1, col_input2 = st.columns(2)
+            
+            with col_input1:
+                f_magasin = st.selectbox("Magasin concerné", ["BAYONNE", "BIDART", "URRUGNE", "PMI"])
+                f_date = st.date_input("Date du refus", datetime.now())
+            
+            with col_input2:
+                f_fourn = st.text_input("Nom du fournisseur")
+                f_bl = st.text_input("Numéro du BL")
             
             st.divider()
             
-            # MULTISELECT AVEC SAISIE LIBRE
-            # On utilise une liste déroulante qui accepte plusieurs choix
-            # et qui permet aussi de taper du texte
+            # Champ Multiselect pour les emails
             f_emails_choisis = st.multiselect(
-                "📧 Destinataires de l'alerte (Sélectionnez ou tapez un nouveau mail) :",
+                "📧 Destinataires (Sélectionnez ou saisissez un mail)",
                 options=base_mails,
                 default=[],
-                help="Vous pouvez sélectionner plusieurs noms ou saisir une adresse complète puis appuyer sur Entrée."
+                help="Appuyez sur Entrée après avoir saisi un nouvel email."
             )
-                
-            f_comment = st.text_area("Motif détaillé du refus")
+            
+            f_comment = st.text_area("Motif du refus")
             f_file = st.file_uploader("📎 Pièce jointe", type=["png", "jpg", "jpeg", "pdf"])
             
-            submit = st.form_submit_button("🚀 Valider et Envoyer l'alerte")
+            # BOUTON DE VALIDATION (Obligatoire dans un formulaire)
+            submit_button = st.form_submit_button("🚀 Valider l'enregistrement")
             
-            if submit:
+            if submit_button:
                 if f_fourn and f_bl and f_emails_choisis:
                     new_row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
-                    with st.spinner("Envoi en cours..."):
+                    with st.spinner("Traitement..."):
                         if add_refus_row(new_row):
                             body_mail = generate_mail_content(f_magasin, f_fourn, f_bl, f_comment)
                             success, mail_msg = send_actual_email(f_emails_choisis, f"ALERTE REFUS : {f_fourn}", body_mail, f_file)
-                            
                             if success:
                                 st.balloons()
-                                st.success(f"✅ Enregistré et envoyé à {len(f_emails_choisis)} destinataires.")
+                                st.success(f"✅ Enregistré et envoyé à {len(f_emails_choisis)} personne(s).")
                             else:
-                                st.warning(f"✅ Enregistré sur GSheet, mais erreur mail : {mail_msg}")
+                                st.warning(f"✅ GSheet OK, mais erreur Mail : {msg}")
                 else:
-                    st.error("⚠️ Veuillez remplir le Fournisseur, le BL et au moins un Destinataire.")
+                    st.error("⚠️ Champs obligatoires : Fournisseur, BL et au moins un e-mail.")
 
         # Affichage de l'historique
         st.divider()
