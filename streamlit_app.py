@@ -79,35 +79,32 @@ def save_data_to_gsheet(df_updated):
         return False
 
 #DEF TABLEAU MISE EN PAGE
-def get_standard_grid_options(df, page_size=20, editable_cols=[], use_set_filters=True):
+def get_standard_grid_options(df, page_size=20, editable_cols=[]):
     """
     FONCTION CENTRALISÉE : Configure tous les tableaux AgGrid du site.
-    - Filtres en listes déroulantes (Set Filters)
-    - Pagination personnalisable
-    - Support des colonnes éditables
+    Permet la saisie libre ET le tri/filtrage avancé.
     """
     gb = GridOptionsBuilder.from_dataframe(df)
     
-    # Configuration par défaut
+    # Configuration par défaut : On privilégie agTextColumnFilter pour permettre la saisie
+    # tout en laissant l'utilisateur filtrer via la barre flottante.
     gb.configure_default_column(
         resizable=True, 
         sortable=True, 
-        filter=True,
-        floatingFilter=True, # La ligne de filtre sous l'entête
+        filter='agTextColumnFilter', # Permet la saisie de texte
+        floatingFilter=True,         # Barre de saisie sous l'entête
         minWidth=100,
         editable=False
     )
     
-    # Transformation des filtres en listes déroulantes pour les colonnes texte
-    # On utilise 'agSetColumnFilter' pour avoir une liste de choix
-    if use_set_filters:
-        for col in df.columns:
-            # On applique la liste déroulante surtout sur les colonnes catégorielles
-            if col in ['MAGASIN', 'Nom du fournisseur']:
-                gb.configure_column(col, filter='agSetColumnFilter')
-            elif col == 'Date du refus':
-                gb.configure_column(col, filter='agDateColumnFilter')
+    # Pour les colonnes spécifiques où on veut une aide à la sélection (comme le calendrier)
+    if 'Date du refus' in df.columns:
+        gb.configure_column('Date du refus', filter='agDateColumnFilter')
     
+    # Si on veut transformer une colonne spécifique en "Saisie + Liste", 
+    # AgGrid Community limite l'usage simultané. On reste donc sur TextFilter 
+    # qui est le plus flexible pour la saisie rapide (votre demande principale).
+
     # Configuration des colonnes spécifiques à éditer
     for col in editable_cols:
         if col in df.columns:
