@@ -298,6 +298,7 @@ def main():
                 default=[],
                 help="Vous pouvez sélectionner plusieurs noms ou saisir une adresse complète puis appuyer sur Entrée."
             )
+			
 			f_comment = st.text_area("Motif détaillé du refus")
             f_file = st.file_uploader("📎 Joindre une photo ou un document (facultatif)", type=["png", "jpg", "jpeg", "pdf"])
             
