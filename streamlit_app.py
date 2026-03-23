@@ -349,9 +349,10 @@ def main():
                             success, msg = send_actual_email(f_emails_choisis, f"REFUS MARCHANDISE : {f_fourn}", contenu, f_file)
                             
                             if success:
+                                st.rerun()								
                                 st.success(f"✅ Refus enregistré et mail envoyé.")
                                 st.toast("Remise à zéro du formulaire...", icon="🔄")
-                                st.rerun()
+
                             else:
                                 st.error(f"❌ GSheet OK mais erreur mail : {msg}")
                         else:
