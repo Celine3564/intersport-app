@@ -19,6 +19,7 @@ WS_DATA = 'DATA'
 WS_REFUS = 'REFUS'
 WS_MAILS = 'MAIL' # Onglet contenant la liste des destinataires
 WS_TRANSPORT = 'TRANSPORT'
+WS_PDC = 'PDC'
 apiKey = "" # La clé API est injectée automatiquement par l'environnement
 
 # ONGLET DATA
@@ -34,6 +35,11 @@ COLUMNS_REFUS = ['MAGASIN', 'Date du refus', 'Nom du fournisseur', 'Num du BL','
 COLUMNS_TRANSPORT = [
     'NumTransport', 'Magasin', 'NomTransporteur', 'NbPalettes', 
     'Poids_total', 'Commentaire_Livraison', 'Colis_abime_ouvert', 'LitigeReception'
+]
+
+COLUMNS_PDC = [
+    'Fournisseur', 'NuméroBL', 'DateReceptionPhysique', 'Acheteur', 
+    'mail acheteur', 'date relance', 'Nombre de relance'
 ]
 
 # --- FONCTIONS TECHNIQUES ---
@@ -512,24 +518,54 @@ def main():
     # --- PAGE 3 : PAS DE COMMANDE ---
     # --- Lié à la page PDC  ---
     elif st.session_state.page == 'pdc':
-        st.header("⚠️ Gestion des 'Pas de Commande'")
-        df_all = load_data(WS_DATA, COLUMNS_DATA)
-        # On filtre par exemple sur un statut spécifique ou l'absence de numéro de commande
-        # Ici on affiche tout ce qui est marqué en litige ou spécifique "Sans commande"
-        df_target = df_all[df_all['StatutBL'].str.contains('Commande', case=False, na=False) | (df_all['StatutBL'] == 'LITIGE')].copy()
+        st.title("📦 PDC - Pas De Commande")
+        contacts_map = load_mail_list_v2()
+        liste_labels = list(contacts_map.keys())
         
-        if df_target.empty:
-            st.info("Aucun dossier 'Pas de Commande' identifié.")
-        else:
-            grid_res = render_advanced_grid(
-                df_target[['NumReception', 'Fournisseur', 'StatutBL', 'Commentaire_litige', 'Date Clôture']],
-                editable_cols=['StatutBL', 'Commentaire_litige', 'Date Clôture']
-            )
-            if st.button("💾 Actualiser les dossiers"):
-                if update_multiple_rows(grid_res['data']):
-                    st.success("Dossiers mis à jour.")
-                    st.rerun()
+        with st.form("form_pdc", clear_on_submit=True):
+            st.subheader("Signaler une réception sans commande")
+            c1, c2 = st.columns(2)
+            with c1:
+                p_fourn = st.text_input("Fournisseur")
+                p_bl = st.text_input("Numéro du BL")
+                p_date = st.date_input("Date Réception Physique", datetime.now())
+            with c2:
+                p_label_acheteur = st.selectbox("Acheteur", options=[""] + liste_labels)
+            
+            st.divider()
+            st.info("ℹ️ La pièce jointe est obligatoire pour signaler un PDC.")
+            p_file = st.file_uploader("Joindre le BL (Obligatoire)", type=["jpg", "png", "pdf", "xlsx"])
+            
+            submit_pdc = st.form_submit_button("📧 Envoyer l'alerte PDC")
+            
+            if submit_pdc:
+                if not p_file:
+                    st.error("⚠️ Vous devez obligatoirement joindre une pièce jointe (scan du BL).")
+                elif p_fourn and p_bl and p_label_acheteur:
+                    with st.spinner("Traitement du PDC..."):
+                        mail_acheteur = contacts_map[p_label_acheteur]
+                        nom_acheteur = p_label_acheteur.split(" (")[0]
+                        
+                        # Ajout GSheet : Fournisseur, NuméroBL, Date, Acheteur, mail, date_relance, nb_relance
+                        row_pdc = [p_fourn, p_bl, str(p_date), nom_acheteur, mail_acheteur, str(datetime.now().date()), 0]
+                        
+                        if add_row_gsheet(WS_PDC, row_pdc):
+                            contenu = generate_ai_content("", p_fourn, p_bl, "", mode="pdc")
+                            success, msg = send_actual_email([mail_acheteur], f"PDC - BL {p_bl} - {p_fourn}", contenu, p_file)
+                            if success:
+                                st.success("✅ Alerte PDC envoyée à l'acheteur.")
+                                st.balloons()
+                                st.rerun()
+                            else:
+                                st.warning(f"✅ Enregistré mais erreur mail : {msg}")
+                else:
+                    st.error("⚠️ Veuillez remplir le fournisseur, le BL et l'acheteur.")
 
+        st.divider()
+        st.subheader("📋 Historique PDC")
+        df_pdc = load_data(WS_PDC, COLUMNS_PDC)
+        if not df_pdc.empty:
+            AgGrid(df_pdc, gridOptions=get_standard_grid_options(df_pdc), height=400, theme='balham', key="grid_pdc")
 
     # ---  IMPORT EXCEL ---
     # --- Lié à la page DATA  ---
