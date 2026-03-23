@@ -49,25 +49,41 @@ def authenticate_gsheet():
         st.error(f"❌ Erreur d'authentification : {e}")
         return None
 
-def load_data(ws_name, cols):
-    """Charge les données d'un onglet spécifique."""
+ef load_data(ws_name, cols):
+    """Charge les données d'un onglet en ignorant les colonnes vides dupliquées."""
     try:
         gc = authenticate_gsheet()
         if not gc: return pd.DataFrame(columns=cols)
         sh = gc.open_by_key(SHEET_ID)
         ws = sh.worksheet(ws_name)
-        data = ws.get_all_records()
-        df = pd.DataFrame(data)
-        if df.empty: 
+        
+        # On récupère toutes les valeurs pour filtrer les colonnes vides qui causent l'erreur 'duplicates'
+        all_values = ws.get_all_values()
+        if not all_values:
             return pd.DataFrame(columns=cols)
+            
+        header = all_values[0]
+        data = all_values[1:]
+        df = pd.DataFrame(data, columns=header)
+        
+        # Supprimer les colonnes sans nom (vides) qui font planter AgGrid/Pandas
+        df = df.loc[:, ~df.columns.duplicated()]
+        if '' in df.columns:
+            df = df.drop(columns=[''])
+            
+        # Nettoyage des noms de colonnes
+        df.columns = [c.strip() for c in df.columns]
+        
         # S'assurer que toutes les colonnes attendues sont présentes
         for col in cols:
             if col not in df.columns:
                 df[col] = ""
+                
         return df[cols].fillna('').iloc[::-1]
     except Exception as e:
-        # Si l'onglet n'existe pas ou est vide sans en-tête
+        # Fallback si get_all_records échoue à cause des doublons
         return pd.DataFrame(columns=cols)
+
 
 def save_data_to_gsheet(df_updated):
     """Sauvegarde complète de la feuille (plus fiable que update_cell par cell)"""
