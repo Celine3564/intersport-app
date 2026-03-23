@@ -309,11 +309,11 @@ def main():
             
             st.divider()
             
-            # GESTION DES DESTINATAIRES
+			 # GESTION DES DESTINATAIRES
             if not options_labels:
                 st.warning("⚠️ Liste d'e-mails vide ou inaccessible dans GSheet (Onglet 'MAIL').")
                 f_emails_raw = st.text_input("📧 Saisir les e-mails manuellement (séparés par une virgule) :")
-                destinataires_finaux = [e.strip() for e in f_emails_raw.split(",") if "@" in e]
+                f_emails_choisis = [e.strip() for e in f_emails_raw.split(",") if "@" in e]
             else:
                 labels_selectionnes = st.multiselect(
                     "📧 Destinataires (Recherchez par Nom ou Email) :",
@@ -323,14 +323,14 @@ def main():
                 )
                 
                 # Conversion des labels sélectionnés en adresses emails pures
-                destinataires_finaux = []
+                f_emails_choisis = []
                 for lab in labels_selectionnes:
                     if lab in mail_mapping:
-                        destinataires_finaux.append(mail_mapping[lab])
+                        f_emails_choisis.append(mail_mapping[lab])
                     else:
                         # Cas où l'utilisateur a tapé un mail manuellement
                         if "@" in lab:
-                            destinataires_finaux.append(lab.strip())
+                            f_emails_choisis.append(lab.strip()) 
             
             f_comment = st.text_area("Motif du refus")
             f_file = st.file_uploader("📎 Pièce jointe", type=["png", "jpg", "jpeg", "pdf"])
