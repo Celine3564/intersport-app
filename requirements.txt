@@ -3,7 +3,6 @@ streamlit
 pandas
 gspread
 openpyxl
-st-aggrid
 xlsxwriter
 xlrd >= 2.0.1
 requests
