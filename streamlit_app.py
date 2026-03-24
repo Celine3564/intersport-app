@@ -588,44 +588,92 @@ def main():
     # --- Lié à la page DATA  ---
     elif st.session_state.page == 'import':
         st.title("📥 Import des nouvelles réceptions")
-        st.info("Cette section permet de mettre à jour la liste des réceptions attendues dans l'onglet **DATA**.")
+        st.info("Cette section permet de mettre à jour la liste complète des réceptions dans l'onglet **DATA**.")
         
-        st.write("Le fichier Excel doit contenir au minimum les colonnes : `NumReception`, `Fournisseur`, `Livré le`.")
+        with st.expander("📝 Format requis pour le fichier Excel"):
+            st.write("Le fichier doit contenir les colonnes suivantes :")
+            st.code(", ".join(COLUMNS_DATA))
+        
         uploaded_file = st.file_uploader("Choisir un fichier Excel", type=['xlsx', 'xls'])
         
         if uploaded_file:
             try:
                 df_upload = pd.read_excel(uploaded_file)
-                st.write(f"Aperçu des données ({len(df_upload)} lignes) :")
+                st.write(f"🔍 Aperçu du fichier chargé ({len(df_upload)} lignes) :")
                 st.dataframe(df_upload.head())
                 
-                # Vérification des colonnes
+                # Vérification de la correspondance des colonnes
                 missing_cols = [c for c in COLUMNS_DATA if c not in df_upload.columns]
                 
                 if missing_cols:
-                    st.error(f"❌ Colonnes manquantes dans le fichier : {', '.join(missing_cols)}")
-                else:
-                    col_imp1, col_imp2 = st.columns(2)
-                    with col_imp1:
-                        mode_import = st.radio("Méthode d'import :", ["Écraser les données existantes", "Ajouter à la suite"])
-                    
-                    if st.button("🚀 Lancer l'importation vers GSheet"):
-                        with st.spinner("Mise à jour du Google Sheet..."):
-                            df_to_append = df_upload[COLUMNS_DATA].fillna('')
-                            
-                            if mode_import == "Ajouter à la suite":
-                                df_current = load_data(WS_DATA, COLUMNS_DATA)
-                                df_final = pd.concat([df_current, df_to_append], ignore_index=True)
-                            else:
-                                df_final = df_to_append
-                            
-                            if save_data_to_gsheet(WS_DATA, df_final):
-                                st.success("✅ Importation réussie !")
-                                st.balloons()
-                            else:
-                                st.error("❌ Échec de la sauvegarde.")
+                    st.warning(f"⚠️ Certaines colonnes du modèle sont absentes du fichier : {', '.join(missing_cols)}")
+                    st.info("Elles seront créées vides dans le Google Sheet.")
+                
+                col_imp1, col_imp2 = st.columns(2)
+                with col_imp1:
+                    mode_import = st.radio("Méthode d'importation :", ["Écraser les données existantes", "Ajouter à la suite"])
+                
+                if st.button("🚀 Lancer l'importation vers GSheet"):
+                    with st.spinner("Synchronisation avec Google Sheets en cours..."):
+                        # Reindexation pour assurer l'ordre et la présence de toutes les colonnes
+                        df_to_process = df_upload.reindex(columns=COLUMNS_DATA).fillna('')
+                        
+                        if mode_import == "Ajouter à la suite":
+                            df_current = load_data(WS_DATA, COLUMNS_DATA)
+                            df_final = pd.concat([df_current, df_to_process], ignore_index=True)
+                        else:
+                            df_final = df_to_process
+                        
+                        if save_data_to_gsheet(WS_DATA, df_final):
+                            st.success(f"✅ Importation de {len(df_to_process)} lignes réussie !")
+                            st.balloons()
+                        else:
+                            st.error("❌ Échec de la sauvegarde sur le serveur.")
             except Exception as e:
-                st.error(f"Erreur de lecture du fichier : {e}")
+                st.error(f"❌ Erreur lors du traitement du fichier : {e}")
+
+    elif st.session_state.page == 'refus':
+        st.title("🚚 Déclaration de Refus")
+        contacts_map = load_mail_list_v2()
+        liste_labels = list(contacts_map.keys())
+        
+        with st.form("main_form_refus", clear_on_submit=True):
+            st.subheader("Détails de la livraison")
+            col1, col2 = st.columns(2)
+            with col1:
+                f_magasin = st.selectbox("Magasin", ["BAYONNE", "BIDART", "URRUGNE", "PMI"])
+                f_date = st.date_input("Date du refus", datetime.now())
+            with col2:
+                f_fourn = st.text_input("Fournisseur")
+                f_bl = st.text_input("Numéro de BL")
+            
+            st.divider()
+            f_emails_choisis = []
+            if not liste_labels:
+                f_manual = st.text_input("Saisir emails manuels :")
+                if f_manual: f_emails_choisis = [e.strip() for e in f_manual.split(",") if "@" in e]
+            else:
+                selection = st.multiselect("Destinataires :", options=liste_labels)
+                for item in selection:
+                    if item in contacts_map: f_emails_choisis.append(contacts_map[item])
+                    elif "@" in item: f_emails_choisis.append(item.strip())
+            
+            f_comment = st.text_area("Commentaire / Motif")
+            f_file = st.file_uploader("Preuve / Photo", type=["jpg", "png", "pdf", "jpeg"])
+            submit = st.form_submit_button("🚀 Enregistrer et Envoyer")
+            
+            if submit:
+                if f_fourn and f_bl and f_emails_choisis:
+                    with st.spinner("Génération du mail via IA..."):
+                        row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
+                        if add_row_gsheet(WS_REFUS, row):
+                            contenu_mail = generate_ai_content(f_magasin, f_fourn, f_bl, f_comment, mode="refus")
+                            success, msg_mail = send_actual_email(f_emails_choisis, f"REFUS MARCHANDISE : {f_fourn}", contenu_mail, f_file)
+                            if success:
+                                st.success("✅ Enregistré et mail envoyé.")
+                                st.rerun()
+                            else: st.warning(f"✅ GSheet mis à jour, mais erreur mail : {msg_mail}")
+                else: st.error("⚠️ Remplissez les champs obligatoires.")
 				
     # --- EMPLACEMENTS ---
     # --- Lié à la page DATA  ---
