@@ -563,8 +563,8 @@ def main():
                         mail_acheteur = contacts_map[p_label_acheteur]
                         nom_acheteur = p_label_acheteur.split(" (")[0]
                         
-                        # Ajout GSheet : Fournisseur, NuméroBL, Date, Acheteur, mail, date_relance, nb_relance, Commentaire_PDC
-                        row_pdc = [p_fourn, p_bl, str(p_date), nom_acheteur, mail_acheteur, str(datetime.now().date()), 0, p_comment]
+                        # Ajout GSheet : Fournisseur, NuméroBL, Commentaire_PDC , Date, Acheteur, mail, date_relance, nb_relance
+                        row_pdc = [p_fourn, p_bl, str(p_date), p_comment, nom_acheteur, mail_acheteur, str(datetime.now().date()), 0]
                         
                         if add_row_gsheet(WS_PDC, row_pdc):
                             contenu = generate_ai_content("", p_fourn, p_bl, p_comment, mode="pdc")
