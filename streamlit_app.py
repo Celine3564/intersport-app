@@ -637,11 +637,29 @@ def main():
                         if save_data_to_gsheet(WS_DATA, df_final):
                             st.success(f"✅ Importation réussie ! {len(df_to_process)} nouvelles lignes ajoutées.")
                             st.balloons()
+							# Forcer le rafraîchissement des données pour l'historique en bas
+                            st.session_state['last_import_time'] = datetime.now()
                         else:
                             st.error("❌ Échec de la sauvegarde sur Google Sheets.")
             except Exception as e:
                 st.error(f"❌ Erreur lors du traitement : {e}")
-
+        
+        # Section Historique (Similaire à PDC et Refus)
+        st.divider()
+        st.subheader("📋 Historique des réceptions (Base DATA)")
+        with st.spinner("Chargement de l'historique..."):
+            df_history = load_data(WS_DATA, COLUMNS_DATA)
+            if not df_history.empty:
+                # Affichage des plus récents en premier
+                AgGrid(
+                    df_history.iloc[::-1], 
+                    gridOptions=get_standard_grid_options(df_history), 
+                    height=500, 
+                    theme='balham',
+                    update_mode=GridUpdateMode.NO_UPDATE
+                )
+            else:
+                st.info("Aucune donnée dans la base DATA.")
 
     elif st.session_state.page == 'refus':
         st.title("🚚 Déclaration de Refus")
