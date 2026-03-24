@@ -592,8 +592,8 @@ def main():
             AgGrid(df_pdc, gridOptions=get_standard_grid_options(df_pdc), height=400, theme='balham', key="grid_pdc")
 
     # ---  IMPORT EXCEL ---
-    # --- Lié à la page DATA  ---
-   elif st.session_state.page == 'import':
+# --- Lié à la page DATA  ---
+    elif st.session_state.page == 'import':
         st.title("📥 Import des nouvelles réceptions")
         st.info("Mode : **Ajouter à la suite**. Contrôle des doublons activé sur le champ `NumReception`.")
         
