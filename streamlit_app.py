@@ -593,12 +593,13 @@ def main():
 
     # ---  IMPORT EXCEL ---
     # --- Lié à la page DATA  ---
-    elif st.session_state.page == 'import':
+        elif st.session_state.page == 'import':
         st.title("📥 Import des nouvelles réceptions")
-        st.info("Mode : **Ajouter à la suite**. Les nouveaux imports complètent la base existante.")
+        st.info("Mode : **Ajouter à la suite**. Contrôle des doublons activé sur le champ `NumReception`.")
         
         with st.expander("📝 Détails de l'importation"):
             st.write("Le système applique les règles suivantes :")
+            st.markdown("- **Contrôle Doublon** : Interdiction d'importer un numéro déjà existant.")
             st.markdown("- **Correspondance automatique** : La colonne `N°` devient `NumReception`.")
             st.markdown("- **Statut automatique** : Chaque ligne est marquée comme `À déballer`.")
             st.markdown("- **Champs vides** : Les colonnes Emplacement, Déballage et Litiges sont initialisées vides.")
@@ -626,31 +627,42 @@ def main():
                     df_to_process[c] = ""
                 
                 if st.button("🚀 Lancer l'importation (Ajouter à la suite)"):
-                    with st.spinner("Traitement et fusion des données..."):
-                        # Charger les données actuelles
+                    with st.spinner("Vérification des doublons et fusion..."):
+                        # Charger les données actuelles pour vérification des doublons
                         df_current = load_data(WS_DATA, COLUMNS_DATA)
                         
-                        # Concaténation (Ajouter à la suite)
-                        df_final = pd.concat([df_current, df_to_process], ignore_index=True).fillna('')
+                        # Liste des NumReception déjà présents
+                        existing_nums = set(df_current['NumReception'].astype(str).unique())
+                        # Liste des nouveaux NumReception à importer
+                        new_nums = df_to_process['NumReception'].astype(str).tolist()
                         
-                        # Appel de la fonction de sauvegarde avec les deux arguments requis
-                        if save_data_to_gsheet(WS_DATA, df_final):
-                            st.success(f"✅ Importation réussie ! {len(df_to_process)} nouvelles lignes ajoutées.")
-                            st.balloons()
-							# Forcer le rafraîchissement des données pour l'historique en bas
-                            st.session_state['last_import_time'] = datetime.now()
+                        # Identification des doublons
+                        doubles = [n for n in new_nums if n in existing_nums and n != "" and n != "nan"]
+                        
+                        if doubles:
+                            st.error(f"❌ Importation annulée : {len(doubles)} numéro(s) de réception existe(nt) déjà dans la base.")
+                            st.warning(f"Numéros en doublon : {', '.join(doubles[:15])}{'...' if len(doubles) > 15 else ''}")
                         else:
-                            st.error("❌ Échec de la sauvegarde sur Google Sheets.")
+                            # Concaténation (Ajouter à la suite)
+                            df_final = pd.concat([df_current, df_to_process], ignore_index=True).fillna('')
+                            
+                            # Appel de la fonction de sauvegarde
+                            if save_data_to_gsheet(WS_DATA, df_final):
+                                st.success(f"✅ Importation réussie ! {len(df_to_process)} nouvelles lignes ajoutées.")
+                                st.balloons()
+                                # Forcer le rafraîchissement
+                                st.session_state['last_import_time'] = datetime.now()
+                            else:
+                                st.error("❌ Échec de la sauvegarde sur Google Sheets.")
             except Exception as e:
                 st.error(f"❌ Erreur lors du traitement : {e}")
         
-        # Section Historique (Similaire à PDC et Refus)
+        # Section Historique
         st.divider()
         st.subheader("📋 Historique des réceptions (Base DATA)")
         with st.spinner("Chargement de l'historique..."):
             df_history = load_data(WS_DATA, COLUMNS_DATA)
             if not df_history.empty:
-                # Affichage des plus récents en premier
                 AgGrid(
                     df_history.iloc[::-1], 
                     gridOptions=get_standard_grid_options(df_history), 
@@ -661,49 +673,6 @@ def main():
             else:
                 st.info("Aucune donnée dans la base DATA.")
 
-    elif st.session_state.page == 'refus':
-        st.title("🚚 Déclaration de Refus")
-        contacts_map = load_mail_list_v2()
-        liste_labels = list(contacts_map.keys())
-        
-        with st.form("main_form_refus", clear_on_submit=True):
-            st.subheader("Détails de la livraison")
-            col1, col2 = st.columns(2)
-            with col1:
-                f_magasin = st.selectbox("Magasin", ["BAYONNE", "BIDART", "URRUGNE", "PMI"])
-                f_date = st.date_input("Date du refus", datetime.now())
-            with col2:
-                f_fourn = st.text_input("Fournisseur")
-                f_bl = st.text_input("Numéro de BL")
-            
-            st.divider()
-            f_emails_choisis = []
-            if not liste_labels:
-                f_manual = st.text_input("Saisir emails manuels :")
-                if f_manual: f_emails_choisis = [e.strip() for e in f_manual.split(",") if "@" in e]
-            else:
-                selection = st.multiselect("Destinataires :", options=liste_labels)
-                for item in selection:
-                    if item in contacts_map: f_emails_choisis.append(contacts_map[item])
-                    elif "@" in item: f_emails_choisis.append(item.strip())
-            
-            f_comment = st.text_area("Commentaire / Motif")
-            f_file = st.file_uploader("Preuve / Photo", type=["jpg", "png", "pdf", "jpeg"])
-            submit = st.form_submit_button("🚀 Enregistrer et Envoyer")
-            
-            if submit:
-                if f_fourn and f_bl and f_emails_choisis:
-                    with st.spinner("Génération du mail via IA..."):
-                        row = [f_magasin, str(f_date), f_fourn, f_bl, f_comment]
-                        if add_row_gsheet(WS_REFUS, row):
-                            contenu_mail = generate_ai_content(f_magasin, f_fourn, f_bl, f_comment, mode="refus")
-                            success, msg_mail = send_actual_email(f_emails_choisis, f"REFUS MARCHANDISE : {f_fourn}", contenu_mail, f_file)
-                            if success:
-                                st.success("✅ Enregistré et mail envoyé.")
-                                st.rerun()
-                            else: st.warning(f"✅ GSheet mis à jour, mais erreur mail : {msg_mail}")
-                else: st.error("⚠️ Remplissez les champs obligatoires.")
-				
     # --- EMPLACEMENTS ---
     # --- Lié à la page DATA  ---
     elif st.session_state.page == 'emplacements':
