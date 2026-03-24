@@ -29,6 +29,18 @@ COLUMNS_DATA = [
     'Emplacement', 'NomDeballage', 'DateClotureDeballage', 'LitigesCompta', 
     'Commentaire_litige', 'NumTransport'
 ]
+# Mappage de correspondance (Excel -> Google Sheet)
+COLUMN_MAPPING = {
+    'N°': 'NumReception',
+    'Magasin': 'Magasin',
+    'Fournisseur': 'Fournisseur',
+    'N° Fourn.': 'N° Fourn.',
+    'Mt TTC': 'Mt TTC',
+    'Livré le': 'Livré le',
+    'Qté': 'Qté'
+}
+
+	
 # Colonnes basées l'onglet REFUS
 COLUMNS_REFUS = ['MAGASIN', 'Date du refus', 'Nom du fournisseur', 'Num du BL','Commentaire du refus']
 # Colonnes basées l'onglet TRANSPPORT			
