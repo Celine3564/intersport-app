@@ -676,28 +676,54 @@ def main():
     # --- EMPLACEMENTS ---
     # --- Lié à la page DATA  ---
     elif st.session_state.page == 'emplacements':
-        st.header("📍 Attribution des Emplacements")
-        mask = (df_all['Emplacement'] == "") | (df_all['Emplacement'].isna())
-        df_target = df_all[mask].copy()
+        st.title("📍 Attribution des Emplacements")
+        st.write("Sélectionnez les réceptions à ranger et indiquez leur emplacement.")
         
-        if df_target.empty:
-            st.success("Toutes les réceptions ont un emplacement !")
-            if st.button("Voir tout"): render_custom_grid(df_all)
+        df_data = load_data(WS_DATA, COLUMNS_DATA)
+        # On ne montre que ce qui est "À déballer"
+        df_to_show = df_data[df_data['StatutBL'] == "À déballer"]
+        
+        if df_to_show.empty:
+            st.info("Aucun bon de livraison en attente de déballage.")
         else:
-            grid_res = render_custom_grid(
-                df_target[['NumReception', 'Fournisseur', 'Livré le', 'Qté', 'Emplacement']],
-                editable_cols=['Emplacement']
+            gb = GridOptionsBuilder.from_dataframe(df_to_show)
+            gb.configure_default_column(resizable=True, sortable=True, filter=True)
+            gb.configure_selection(selection_mode="multiple", use_checkbox=True)
+            grid_opts = gb.build()
+            
+            grid_res = AgGrid(
+                df_to_show, 
+                gridOptions=grid_opts, 
+                height=400, 
+                theme='balham',
+                update_mode=GridUpdateMode.SELECTION_CHANGED
             )
-            if st.button("💾 Sauvegarder les Emplacements"):
-                df_updated = df_all.copy()
-                new_entries = pd.DataFrame(grid_res['data'])
-                for _, row in new_entries.iterrows():
-                    df_updated.loc[df_updated['NumReception'] == row['NumReception'], 'Emplacement'] = row['Emplacement']
+            
+            selected_rows = grid_res['selected_rows']
+            
+            if selected_rows is not None and len(selected_rows) > 0:
+                st.success(f"{len(selected_rows)} ligne(s) sélectionnée(s)")
                 
-                if save_data_to_gsheet(df_updated):
-                    st.success("Emplacements enregistrés.")
-                    st.rerun()
-
+                with st.form("emplacement_form"):
+                    nouvel_emplacement = st.text_input("Emplacement (ex: Zone A1, Travée 4...)")
+                    submit = st.form_submit_button("Mettre à jour l'emplacement")
+                    
+                    if submit and nouvel_emplacement:
+                        # Extraire les NumReception des lignes sélectionnées
+                        # Selon la version d'AgGrid, selected_rows est soit une liste de dict, soit un DataFrame
+                        if isinstance(selected_rows, pd.DataFrame):
+                            target_nums = selected_rows['NumReception'].astype(str).tolist()
+                        else:
+                            target_nums = [str(r['NumReception']) for r in selected_rows]
+                        
+                        # Mettre à jour dans le DataFrame global
+                        df_data.loc[df_data['NumReception'].astype(str).isin(target_nums), 'Emplacement'] = nouvel_emplacement
+                        
+                        if save_data_to_gsheet(WS_DATA, df_data):
+                            st.success(f"✅ Emplacement '{nouvel_emplacement}' mis à jour pour {len(target_nums)} réception(s) !")
+                            st.rerun()
+                        else:
+                            st.error("Erreur lors de la mise à jour.")
     # --- DÉBALLAGE ---
     # --- Lié à la page DATA  ---
     elif st.session_state.page == 'deballage':
