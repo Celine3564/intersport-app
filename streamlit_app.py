@@ -600,11 +600,13 @@ def main():
     # --- Lié à la page DATA  ---
     elif st.session_state.page == 'import':
         st.title("📥 Import des nouvelles réceptions")
-        st.info("Cette section permet de mettre à jour la liste complète des réceptions dans l'onglet **DATA**.")
+        st.info("Mode : **Ajouter à la suite**. Les nouveaux imports complètent la base existante.")
         
-        with st.expander("📝 Format requis pour le fichier Excel"):
-            st.write("Le fichier doit contenir les colonnes suivantes :")
-            st.code(", ".join(COLUMNS_DATA))
+        with st.expander("📝 Détails de l'importation"):
+            st.write("Le système applique les règles suivantes :")
+            st.markdown("- **Correspondance automatique** : La colonne `N°` devient `NumReception`.")
+            st.markdown("- **Statut automatique** : Chaque ligne est marquée comme `À déballer`.")
+            st.markdown("- **Champs vides** : Les colonnes Emplacement, Déballage et Litiges sont initialisées vides.")
         
         uploaded_file = st.file_uploader("Choisir un fichier Excel", type=['xlsx', 'xls'])
         
@@ -614,38 +616,35 @@ def main():
                 st.write(f"🔍 Aperçu du fichier chargé ({len(df_upload)} lignes) :")
                 st.dataframe(df_upload.head())
                 
-                # Application du mappage des colonnes (ex: N° -> NumReception)
+                # 1. Application du mappage des colonnes
                 df_mapped = df_upload.rename(columns=COLUMN_MAPPING)
                 
-                # Vérification des colonnes manquantes après mappage
-                missing_cols = [c for c in COLUMNS_DATA if c not in df_mapped.columns]
+                # 2. Préparation du DataFrame final avec toutes les colonnes
+                df_to_process = df_mapped.reindex(columns=COLUMNS_DATA)
                 
-                if missing_cols:
-                    st.warning(f"⚠️ Certaines colonnes du modèle sont absentes du fichier : {', '.join(missing_cols)}")
-                    st.info("Elles seront créées vides dans le Google Sheet.")
+                # 3. Application des valeurs par défaut demandées
+                df_to_process['StatutBL'] = "À déballer"
                 
-                col_imp1, col_imp2 = st.columns(2)
-                with col_imp1:
-                    mode_import = st.radio("Méthode d'importation :", ["Écraser les données existantes", "Ajouter à la suite"])
+                # Initialisation explicite à vide pour les champs gérés plus tard
+                cols_to_init = ['Emplacement', 'NomDeballage', 'DateClotureDeballage', 'LitigesCompta', 'Commentaire_litige', 'NumTransport']
+                for c in cols_to_init:
+                    df_to_process[c] = ""
                 
-                if st.button("🚀 Lancer l'importation vers GSheet"):
-                    with st.spinner("Synchronisation avec Google Sheets en cours..."):
-                        # Reindexation pour assurer l'ordre et la présence de toutes les colonnes
-                        df_to_process = df_mapped.reindex(columns=COLUMNS_DATA).fillna('')
+                if st.button("🚀 Lancer l'importation (Ajouter à la suite)"):
+                    with st.spinner("Traitement et fusion des données..."):
+                        # Charger les données actuelles
+                        df_current = load_data(WS_DATA, COLUMNS_DATA)
                         
-                        if mode_import == "Ajouter à la suite":
-                            df_current = load_data(WS_DATA, COLUMNS_DATA)
-                            df_final = pd.concat([df_current, df_to_process], ignore_index=True)
-                        else:
-                            df_final = df_to_process
+                        # Concaténation (Ajouter à la suite)
+                        df_final = pd.concat([df_current, df_to_process], ignore_index=True).fillna('')
                         
                         if save_data_to_gsheet(WS_DATA, df_final):
-                            st.success(f"✅ Importation de {len(df_to_process)} lignes réussie !")
+                            st.success(f"✅ Importation réussie ! {len(df_to_process)} nouvelles lignes ajoutées.")
                             st.balloons()
                         else:
-                            st.error("❌ Échec de la sauvegarde sur le serveur.")
+                            st.error("❌ Échec de la sauvegarde sur Google Sheets.")
             except Exception as e:
-                st.error(f"❌ Erreur lors du traitement du fichier : {e}")
+                st.error(f"❌ Erreur lors du traitement : {e}")
 
     elif st.session_state.page == 'refus':
         st.title("🚚 Déclaration de Refus")
