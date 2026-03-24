@@ -593,7 +593,7 @@ def main():
 
     # ---  IMPORT EXCEL ---
     # --- Lié à la page DATA  ---
-        elif st.session_state.page == 'import':
+   elif st.session_state.page == 'import':
         st.title("📥 Import des nouvelles réceptions")
         st.info("Mode : **Ajouter à la suite**. Contrôle des doublons activé sur le champ `NumReception`.")
         
