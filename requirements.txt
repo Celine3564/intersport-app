@@ -1,7 +1,9 @@
+streamlit-aggrid
 streamlit
 pandas
 gspread
 openpyxl
-streamlit-aggrid
+st-aggrid
 xlsxwriter
-
+xlrd >= 2.0.1
+requests
