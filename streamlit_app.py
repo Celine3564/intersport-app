@@ -25,7 +25,7 @@ apiKey = "" # La clé API est injectée automatiquement par l'environnement
 # ONGLET DATA
 COLUMNS_DATA = [
     'NumReception', 'Magasin', 'Fournisseur', 'N° Fourn.', 'Mt TTC', 
-    'Livré le', 'Qté', 'Collection', 'Num Facture', 'StatutBL', 
+    'Livré le', 'Qté', 'Collection', 'N° Facture', 'StatutBL', 
     'Emplacement', 'NomDeballage', 'DateClotureDeballage', 'LitigesCompta', 
     'Commentaire_litige', 'NumTransport'
 ]
@@ -586,7 +586,7 @@ def main():
 
     # ---  IMPORT EXCEL ---
     # --- Lié à la page DATA  ---
-    elif st.session_state.page == 'import':
+   elif st.session_state.page == 'import':
         st.title("📥 Import des nouvelles réceptions")
         st.info("Cette section permet de mettre à jour la liste complète des réceptions dans l'onglet **DATA**.")
         
@@ -602,8 +602,11 @@ def main():
                 st.write(f"🔍 Aperçu du fichier chargé ({len(df_upload)} lignes) :")
                 st.dataframe(df_upload.head())
                 
-                # Vérification de la correspondance des colonnes
-                missing_cols = [c for c in COLUMNS_DATA if c not in df_upload.columns]
+                # Application du mappage des colonnes (ex: N° -> NumReception)
+                df_mapped = df_upload.rename(columns=COLUMN_MAPPING)
+                
+                # Vérification des colonnes manquantes après mappage
+                missing_cols = [c for c in COLUMNS_DATA if c not in df_mapped.columns]
                 
                 if missing_cols:
                     st.warning(f"⚠️ Certaines colonnes du modèle sont absentes du fichier : {', '.join(missing_cols)}")
@@ -616,7 +619,7 @@ def main():
                 if st.button("🚀 Lancer l'importation vers GSheet"):
                     with st.spinner("Synchronisation avec Google Sheets en cours..."):
                         # Reindexation pour assurer l'ordre et la présence de toutes les colonnes
-                        df_to_process = df_upload.reindex(columns=COLUMNS_DATA).fillna('')
+                        df_to_process = df_mapped.reindex(columns=COLUMNS_DATA).fillna('')
                         
                         if mode_import == "Ajouter à la suite":
                             df_current = load_data(WS_DATA, COLUMNS_DATA)
