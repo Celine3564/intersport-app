@@ -586,7 +586,7 @@ def main():
 
     # ---  IMPORT EXCEL ---
     # --- Lié à la page DATA  ---
-   elif st.session_state.page == 'import':
+    elif st.session_state.page == 'import':
         st.title("📥 Import des nouvelles réceptions")
         st.info("Cette section permet de mettre à jour la liste complète des réceptions dans l'onglet **DATA**.")
         
