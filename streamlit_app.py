@@ -587,25 +587,46 @@ def main():
     # ---  IMPORT EXCEL ---
     # --- Lié à la page DATA  ---
     elif st.session_state.page == 'import':
-        st.header("📥 Import des nouvelles réceptions")
-        st.write("Le fichier Excel doit contenir au minimum : `NumReception`, `Fournisseur`, `Livré le`")
-        uploaded_file = st.file_uploader("Fichier Excel", type=['xlsx', 'xls'])
+        st.title("📥 Import des nouvelles réceptions")
+        st.info("Cette section permet de mettre à jour la liste des réceptions attendues dans l'onglet **DATA**.")
+        
+        st.write("Le fichier Excel doit contenir au minimum les colonnes : `NumReception`, `Fournisseur`, `Livré le`.")
+        uploaded_file = st.file_uploader("Choisir un fichier Excel", type=['xlsx', 'xls'])
         
         if uploaded_file:
-            df_upload = pd.read_excel(uploaded_file)
-            st.write(f"Aperçu ({len(df_upload)} lignes) :")
-            st.dataframe(df_upload.head())
-            
-            if st.button("🚀 Ajouter au Google Sheet"):
-                # On prépare les données pour matcher exactement les colonnes
-                df_to_append = df_upload.reindex(columns=COLUMNS_DATA).fillna('')
-                # On concatène avec l'existant
-                df_final = pd.concat([df_all, df_to_append], ignore_index=True)
+            try:
+                df_upload = pd.read_excel(uploaded_file)
+                st.write(f"Aperçu des données ({len(df_upload)} lignes) :")
+                st.dataframe(df_upload.head())
                 
-                if save_data_to_gsheet(df_final):
-                    st.success("Import réussi !")
-                    st.rerun()
-
+                # Vérification des colonnes
+                missing_cols = [c for c in COLUMNS_DATA if c not in df_upload.columns]
+                
+                if missing_cols:
+                    st.error(f"❌ Colonnes manquantes dans le fichier : {', '.join(missing_cols)}")
+                else:
+                    col_imp1, col_imp2 = st.columns(2)
+                    with col_imp1:
+                        mode_import = st.radio("Méthode d'import :", ["Écraser les données existantes", "Ajouter à la suite"])
+                    
+                    if st.button("🚀 Lancer l'importation vers GSheet"):
+                        with st.spinner("Mise à jour du Google Sheet..."):
+                            df_to_append = df_upload[COLUMNS_DATA].fillna('')
+                            
+                            if mode_import == "Ajouter à la suite":
+                                df_current = load_data(WS_DATA, COLUMNS_DATA)
+                                df_final = pd.concat([df_current, df_to_append], ignore_index=True)
+                            else:
+                                df_final = df_to_append
+                            
+                            if save_data_to_gsheet(WS_DATA, df_final):
+                                st.success("✅ Importation réussie !")
+                                st.balloons()
+                            else:
+                                st.error("❌ Échec de la sauvegarde.")
+            except Exception as e:
+                st.error(f"Erreur de lecture du fichier : {e}")
+				
     # --- EMPLACEMENTS ---
     # --- Lié à la page DATA  ---
     elif st.session_state.page == 'emplacements':
