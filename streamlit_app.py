@@ -677,53 +677,57 @@ def main():
     # --- Lié à la page DATA  ---
     elif st.session_state.page == 'emplacements':
         st.title("📍 Attribution des Emplacements")
-        st.write("Sélectionnez les réceptions à ranger et indiquez leur emplacement.")
+        st.write("Double-cliquez dans la colonne **Emplacement** pour saisir manuellement, puis cliquez sur le bouton de sauvegarde.")
         
         df_data = load_data(WS_DATA, COLUMNS_DATA)
         # On ne montre que ce qui est "À déballer"
-        df_to_show = df_data[df_data['StatutBL'] == "À déballer"]
+        df_to_show = df_data[df_data['StatutBL'] == "À déballer"].copy()
         
         if df_to_show.empty:
             st.info("Aucun bon de livraison en attente de déballage.")
         else:
             gb = GridOptionsBuilder.from_dataframe(df_to_show)
             gb.configure_default_column(resizable=True, sortable=True, filter=True)
-            gb.configure_selection(selection_mode="multiple", use_checkbox=True)
+            
+            # CONFIGURATION : Rendre la colonne Emplacement éditable manuellement
+            gb.configure_column("Emplacement", editable=True, cellStyle={'background-color': '#e1f5fe'})
+            
+            # On empêche l'édition des autres colonnes importantes pour la sécurité
+            for col in df_to_show.columns:
+                if col != "Emplacement":
+                    gb.configure_column(col, editable=False)
+            
             grid_opts = gb.build()
             
+            # Affichage du tableau éditable
             grid_res = AgGrid(
                 df_to_show, 
                 gridOptions=grid_opts, 
-                height=400, 
+                height=500, 
                 theme='balham',
-                update_mode=GridUpdateMode.SELECTION_CHANGED
+                update_mode=GridUpdateMode.VALUE_CHANGED | GridUpdateMode.MANUAL,
+                data_return_mode=DataReturnMode.FILTERED_AND_SORTED
             )
             
-            selected_rows = grid_res['selected_rows']
-            
-            if selected_rows is not None and len(selected_rows) > 0:
-                st.success(f"{len(selected_rows)} ligne(s) sélectionnée(s)")
+            # Bouton de sauvegarde global
+            if st.button("💾 Sauvegarder les emplacements saisis", use_container_width=True, type="primary"):
+                df_updated_view = pd.DataFrame(grid_res['data'])
                 
-                with st.form("emplacement_form"):
-                    nouvel_emplacement = st.text_input("Emplacement (ex: Zone A1, Travée 4...)")
-                    submit = st.form_submit_button("Mettre à jour l'emplacement")
+                if not df_updated_view.empty:
+                    # On fusionne les changements de la vue vers le DataFrame principal
+                    # On utilise NumReception comme clé de réconciliation
+                    for index, row in df_updated_view.iterrows():
+                        num_rec = str(row['NumReception'])
+                        nouvel_emp = str(row['Emplacement'])
+                        df_data.loc[df_data['NumReception'].astype(str) == num_rec, 'Emplacement'] = nouvel_emp
                     
-                    if submit and nouvel_emplacement:
-                        # Extraire les NumReception des lignes sélectionnées
-                        # Selon la version d'AgGrid, selected_rows est soit une liste de dict, soit un DataFrame
-                        if isinstance(selected_rows, pd.DataFrame):
-                            target_nums = selected_rows['NumReception'].astype(str).tolist()
-                        else:
-                            target_nums = [str(r['NumReception']) for r in selected_rows]
-                        
-                        # Mettre à jour dans le DataFrame global
-                        df_data.loc[df_data['NumReception'].astype(str).isin(target_nums), 'Emplacement'] = nouvel_emplacement
-                        
+                    with st.spinner("Mise à jour de la base de données..."):
                         if save_data_to_gsheet(WS_DATA, df_data):
-                            st.success(f"✅ Emplacement '{nouvel_emplacement}' mis à jour pour {len(target_nums)} réception(s) !")
+                            st.success("✅ Tous les emplacements ont été enregistrés avec succès !")
                             st.rerun()
                         else:
-                            st.error("Erreur lors de la mise à jour.")
+                            st.error("❌ Erreur lors de la sauvegarde sur Google Sheets.")
+
     # --- DÉBALLAGE ---
     # --- Lié à la page DATA  ---
     elif st.session_state.page == 'deballage':
