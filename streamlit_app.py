@@ -103,25 +103,20 @@ def load_data(ws_name, cols):
         return pd.DataFrame(columns=cols)
 
 
-def save_data_to_gsheet(df_updated):
-    """Sauvegarde complète de la feuille (plus fiable que update_cell par cell)"""
+def save_data_to_gsheet(ws_name, df):
+    """Sauvegarde un DataFrame complet dans une feuille de calcul."""
     try:
         gc = authenticate_gsheet()
+        if not gc: return False
         sh = gc.open_by_key(SHEET_ID)
-        ws = sh.worksheet(WS_DATA)
-        
-        # Préparation des données (headers + data)
-        # Conversion des dates/objets en string pour JSON
-        df_to_save = df_updated.copy()
-        for col in df_to_save.columns:
-            df_to_save[col] = df_to_save[col].astype(str).replace(['NaT', 'nan', 'None'], '')
-            
-        data_to_upload = [df_to_save.columns.values.tolist()] + df_to_save.values.tolist()
-        
-        ws.update('A1', data_to_upload)
+        ws = sh.worksheet(ws_name)
+        # Conversion de toutes les données en chaînes pour éviter les erreurs de type
+        data_to_save = [df.columns.values.tolist()] + df.astype(str).values.tolist()
+        ws.clear()
+        ws.update('A1', data_to_save)
         return True
     except Exception as e:
-        st.error(f"Erreur lors de la sauvegarde : {e}")
+        st.error(f"❌ Erreur sauvegarde : {e}")
         return False
 
 def to_excel(df):
@@ -619,7 +614,7 @@ def main():
                 # 1. Application du mappage des colonnes
                 df_mapped = df_upload.rename(columns=COLUMN_MAPPING)
                 
-                # 2. Préparation du DataFrame final avec toutes les colonnes
+                # 2. Préparation du DataFrame final avec toutes les colonnes cibles
                 df_to_process = df_mapped.reindex(columns=COLUMNS_DATA)
                 
                 # 3. Application des valeurs par défaut demandées
@@ -638,6 +633,7 @@ def main():
                         # Concaténation (Ajouter à la suite)
                         df_final = pd.concat([df_current, df_to_process], ignore_index=True).fillna('')
                         
+                        # Appel de la fonction de sauvegarde avec les deux arguments requis
                         if save_data_to_gsheet(WS_DATA, df_final):
                             st.success(f"✅ Importation réussie ! {len(df_to_process)} nouvelles lignes ajoutées.")
                             st.balloons()
@@ -645,6 +641,7 @@ def main():
                             st.error("❌ Échec de la sauvegarde sur Google Sheets.")
             except Exception as e:
                 st.error(f"❌ Erreur lors du traitement : {e}")
+
 
     elif st.session_state.page == 'refus':
         st.title("🚚 Déclaration de Refus")
